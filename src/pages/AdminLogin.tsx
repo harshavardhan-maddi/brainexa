@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { API_BASE_URL } from "@/lib/api-config";
+import { supabase } from "@/lib/supabase";
 
 
 export default function AdminLogin() {
@@ -28,7 +29,15 @@ export default function AdminLogin() {
       const data = await response.json();
 
       if (data.success) {
-        localStorage.setItem("adminUser", JSON.stringify(data.user));
+        // Store admin session in Supabase instead of localStorage
+        await supabase.from("admin_sessions").upsert({
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name,
+          last_login: new Date().toISOString(),
+        });
+        // Keep a short-lived sessionStorage reference for this browser tab only
+        sessionStorage.setItem("adminUser", JSON.stringify(data.user));
         toast.success("Welcome, Administrator");
         navigate("/admin-dashboard");
       } else {

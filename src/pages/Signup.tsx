@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
-import { BookOpen, Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, Loader2 } from "lucide-react";
+import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useGoogleLogin } from "@react-oauth/google";
 import { toast } from "sonner";
 import TermsModal from "@/components/TermsModal";
-import { API_BASE_URL } from "@/lib/api-config";
+import { supabase } from "@/lib/supabase";
 
 
 type Step = "details" | "otp";
@@ -58,30 +57,30 @@ export default function Signup() {
     sendOtp();
   };
 
-  // Step 1: Send OTP to email
+  // Step 1: Send OTP via Supabase (uses Supabase email confirm)
   const sendOtp = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/send-otp`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+      // Sign up with Supabase – it sends a confirmation email automatically
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: name, phone },
+          emailRedirectTo: undefined, // we handle OTP flow below
+        },
       });
-      const data = await res.json();
-      if (data.success) {
-        toast.success("Verification code sent to your email!");
-        setStep("otp");
-      } else {
-        setError(data.error || "Failed to send OTP.");
-      }
-    } catch {
-      setError("Server error. Please try again.");
+      if (error) throw error;
+      toast.success("Verification code sent to your email!");
+      setStep("otp");
+    } catch (err: any) {
+      setError(err.message || "Failed to send verification email.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Verify OTP & create account
+  // Step 2: Verify OTP & complete account creation
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -91,49 +90,50 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/signup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, phone, password, otp }),
+      // Verify the OTP token sent by Supabase
+      const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
+        email,
+        token: otp,
+        type: "signup",
       });
-      const data = await res.json();
-      if (data.success) {
-        login({ ...data.user, password });
-        toast.success("Account created successfully!");
-        navigate("/subscription");
-      } else {
-        setError(data.error || "Failed to create account.");
-      }
-    } catch {
-      setError("Server error. Please try again.");
+      if (verifyError) throw verifyError;
+
+      const userId = verifyData.user?.id!;
+      // Update student profile with name & phone (trigger created the row)
+      await supabase.from("students").update({ name, phone }).eq("id", userId);
+
+      await login({
+        id: userId,
+        name,
+        email,
+        phone,
+        plan: "free",
+        createdAt: new Date().toISOString(),
+        syllabusUpdateCount: 0,
+        syllabusUpdateAllowance: 5,
+        rulesAccepted: false,
+      });
+      toast.success("Account created successfully!");
+      navigate("/subscription");
+    } catch (err: any) {
+      setError(err.message || "Invalid or expired code.");
     } finally {
       setLoading(false);
     }
   };
 
-  const loginWithGoogle = useGoogleLogin({
-    flow: "implicit",
-    onSuccess: async (tokenResponse) => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/google`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token: tokenResponse.access_token }),
-        });
-        const data = await res.json();
-        if (data.success && data.user) {
-          login(data.user);
-          toast.success("Successfully registered with Google!");
-          navigate("/subscription");
-        } else {
-          setError(data.error || "Failed to authenticate with Google.");
-        }
-      } catch {
-        setError("Network error while verifying Google Login.");
-      }
-    },
-    onError: () => setError("Google Signup failed."),
-  });
+  // Google OAuth via Supabase
+  const loginWithGoogle = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/subscription`,
+        queryParams: { access_type: "offline", prompt: "consent" },
+      },
+    });
+    if (error) setError("Google signup failed. Please try again.");
+    // Supabase redirects the user – the trigger auto-creates the students row
+  };
 
   return (
     <div className="min-h-screen flex">
@@ -142,9 +142,7 @@ export default function Signup() {
       <div className="hidden lg:flex flex-1 gradient-red items-center justify-center p-12">
         <motion.div initial={{ opacity: 0, x: -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6 }} className="max-w-md">
           <div className="flex items-center gap-3 mb-8">
-            <div className="w-12 h-12 rounded-xl bg-accent-foreground/20 flex items-center justify-center">
-              <BookOpen className="w-7 h-7 text-accent-foreground" />
-            </div>
+            <img src="/brainexalogo.png" alt="Brainexa Logo" className="w-14 h-14 object-contain rounded-lg" />
             <span className="font-display text-3xl font-bold text-accent-foreground">Brainexa</span>
           </div>
           <h1 className="font-display text-4xl font-bold text-accent-foreground mb-4">
@@ -160,9 +158,7 @@ export default function Signup() {
       <div className="flex-1 flex items-center justify-center p-8 bg-background">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }} className="w-full max-w-md">
           <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-            <div className="w-10 h-10 rounded-xl gradient-red flex items-center justify-center">
-              <BookOpen className="w-6 h-6 text-accent-foreground" />
-            </div>
+            <img src="/brainexalogo.png" alt="Brainexa Logo" className="w-14 h-14 object-contain rounded-lg" />
             <span className="font-display text-2xl font-bold text-foreground">Brainexa</span>
           </div>
 

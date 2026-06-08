@@ -25,27 +25,58 @@ export default function Subscription() {
   const [upiId, setUpiId] = useState("");
   const [showRulesOverlay, setShowRulesOverlay] = useState(false);
 
-  // Load Razorpay Checkout Script
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.onload = () => setIsScriptLoaded(true);
-    document.body.appendChild(script);
-
-    if (location.state?.fromRestricted) {
-      toast.error("Please take subscription first.");
-      window.history.replaceState({}, document.title);
-    }
-  }, [location.state]);
-
-  const handleStandardPayment = async () => {
-    if (!isScriptLoaded) {
-      toast.error("Razorpay SDK not loaded. Please try again.");
-      return;
-    }
-    initiateRazorpay();
+  const loadRazorpay = () => {
+    return new Promise<void>((resolve, reject) => {
+      if (typeof window !== 'undefined' && window.Razorpay) {
+        // SDK already loaded
+        window.__razorpayLoaded = true;
+        setIsScriptLoaded(true);
+        return resolve();
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => {
+        window.__razorpayLoaded = true;
+        setIsScriptLoaded(true);
+        resolve();
+      };
+      script.onerror = () => {
+        window.__razorpayLoaded = false;
+        toast.error('Failed to load Razorpay SDK.');
+        reject(new Error('Razorpay SDK load error'));
+      };
+      document.body.appendChild(script);
+    });
   };
+
+  // Attempt loading with up to 3 retries
+  const attemptLoad = async (retries = 3) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await loadRazorpay();
+        return;
+      } catch (e) {
+        console.warn(`Razorpay SDK load attempt ${i + 1} failed.`);
+        await new Promise(res => setTimeout(res, 1000 * (i + 1)));
+      }
+    }
+    // Final failure
+    toast.error('Unable to load Razorpay SDK after multiple attempts.');
+  };
+
+  attemptLoad();
+}, []);
+
+const handleStandardPayment = async () => {
+  // Ensure Razorpay SDK is loaded before proceeding
+  if (typeof window !== 'undefined' && !window.__razorpayLoaded) {
+    toast.error('Razorpay SDK not loaded. Please try again later.');
+    return;
+  }
+  initiateRazorpay();
+};
 
   const initiateRazorpay = async (method?: string, vpa?: string) => {
     setIsLoading(true);
@@ -60,9 +91,14 @@ export default function Subscription() {
 
       if (!orderData.success) throw new Error(orderData.error);
 
-      // 2. Open Razorpay Checkout Modal
+      // Ensure Razorpay key is available
+      if (!import.meta.env.VITE_RAZORPAY_KEY_ID) {
+        toast.error('Razorpay key is missing. Please configure VITE_RAZORPAY_KEY_ID.');
+        return;
+      }
+      console.log('🔑 Razorpay Key:', import.meta.env.VITE_RAZORPAY_KEY_ID);
       const options: any = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_SZ8RImOkYWhoEl",
+        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_SxuHrNPrYAMuRK",
         amount: orderData.order.amount,
         currency: "INR",
         name: "Brainexa Premium",
@@ -197,7 +233,7 @@ export default function Subscription() {
               </div>
               <div>
                 <h3 className="font-display font-semibold text-lg text-accent">Excellence</h3>
-                <p className="text-3xl font-bold text-foreground">₹299 <span className="text-sm font-normal text-muted-foreground">/ month</span></p>
+                <p className="text-3xl font-bold text-foreground">₹299 <span className="text-sm font-normal text-muted-foreground">lifetime</span></p>
               </div>
             </div>
 
@@ -210,16 +246,21 @@ export default function Subscription() {
                   exit={{ opacity: 0, x: -20 }}
                   className="flex flex-col flex-grow"
                 >
-                  <ul className="space-y-4 mb-10 flex-grow">
-                    <li className="flex items-center gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent" /> Unlimited AI mentoring</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent" /> Unlimited quiz attempts</li>
-                    <li className="flex items-center gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent" /> Advanced study plans</li>
+                  <ul className="space-y-3 mb-10 flex-grow">
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>AI-Optimized Study Planner:</strong> Generate customized daily task schedules</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Interactive AI Study Mentor:</strong> Unlimited educational chat & instant answers</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Syllabus Subjects & Topics:</strong> Structured progress mapping</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Adaptive Quiz & Mastery Checks:</strong> Webcam anti-cheat validation</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Learning Materials Library:</strong> Generate custom notes or upload PDFs</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Regional Audio TTS:</strong> Read-aloud notes in Hindi, Telugu, Tamil, Marathi, and more</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Web-Enhanced Answers:</strong> Real-time web retrieval via Bing search integration</span></li>
+                    <li className="flex items-start gap-3 text-sm font-medium text-foreground"><Check className="w-4 h-4 text-accent mt-0.5 shrink-0" /> <span><strong>Dashboard & Progress Reports:</strong> Visual stats of subject completion & quiz metrics</span></li>
                   </ul>
                   
                   <div className="space-y-3">
                     <button
                       onClick={handleStandardPayment}
-                      disabled={isLoading}
+                      disabled={isLoading || !isScriptLoaded}
                       className="w-full gradient-purple text-primary-foreground py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all"
                     >
                       {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Join Premium <ArrowRight className="w-4 h-4" /></>}

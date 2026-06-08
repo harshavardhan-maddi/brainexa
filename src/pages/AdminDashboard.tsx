@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
   Users, Shield, LogOut, Search, Filter, 
   Trash2, Unlock, Lock, RefreshCw, Download,
-  Calendar, Clock, BookOpen, ChevronDown, FileText, CheckCircle
+  Calendar, Clock, BookOpen, ChevronDown, FileText, CheckCircle, X
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { API_BASE_URL } from "@/lib/api-config";
+import { supabase } from "@/lib/supabase";
 
 
 interface User {
@@ -36,11 +37,12 @@ export default function AdminDashboard() {
   const [dateRange, setDateRange] = useState({ start: "", end: "" });
   const navigate = useNavigate();
 
-  const admin = JSON.parse(localStorage.getItem("adminUser") || "null");
+  // Read admin session from sessionStorage (set at login, tab-scoped)
+  const admin = JSON.parse(sessionStorage.getItem("adminUser") || "null");
 
   useEffect(() => {
     if (!admin || admin.role !== 'admin' || !admin.id) {
-      localStorage.removeItem("adminUser");
+      sessionStorage.removeItem("adminUser");
       navigate("/admin-login");
       return;
     }
@@ -156,7 +158,7 @@ ${reportData.quizResults.map((q: any) => `[${new Date(q.date).toLocaleDateString
   };
 
   const logout = () => {
-    localStorage.removeItem("adminUser");
+    sessionStorage.removeItem("adminUser");
     navigate("/admin-login");
   };
 

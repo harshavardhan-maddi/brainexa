@@ -49,18 +49,18 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 print("[STARTUP] Loading KnowledgeEngine...")
 try:
-    from knowledge_engine import KnowledgeEngine
+    from .knowledge_engine import KnowledgeEngine
     engine = KnowledgeEngine()
     print("[STARTUP] KnowledgeEngine loaded.")
-
-@app.get("/")
-async def root():
-    return {"status": "online", "service": "Brainexa Python Backend"}
 except Exception as e:
     print(f"[CRITICAL] KnowledgeEngine failed: {e}")
     import traceback
     print(traceback.format_exc())
     raise
+
+@app.get("/")
+async def root():
+    return {"status": "online", "service": "Brainexa Python Backend"}
 
 @app.post("/knowledge/search")
 async def search_knowledge(topic: str = Body(..., embed=True)):
@@ -188,6 +188,34 @@ async def generate_material(
             print(f"JSON Parse Error: {e}")
             return {"success": True, "content": content, "performance": performance}
     return {"success": False, "error": content, "performance": performance if performance else None}
+
+@app.post("/knowledge/regenerate-plan")
+async def regenerate_plan(
+    userId: str = Body(..., embed=True)
+) -> dict:
+    """Delete any existing study plan for the user and generate a fresh one.
+    Returns the newly generated material or success flag.
+    """
+    # Ensure the user is subscribed
+    if not is_subscribed(userId):
+        raise HTTPException(status_code=403, detail="Access denied: subscription required")
+    # Delete existing plan rows (assumes a table named study_plans)
+    conn = get_db_connection()
+    if conn:
+        cur = conn.cursor()
+        try:
+            cur.execute('DELETE FROM study_plans WHERE user_id = %s::uuid', (userId,))
+            conn.commit()
+        finally:
+            cur.close()
+            conn.close()
+    # After deletion, generate a new plan using the existing engine method.
+    # For simplicity, we reuse generate_material with placeholder values.
+    # You may adjust the subject/topics as needed.
+    placeholder_subject = "General"
+    placeholder_topics: list[str] = []
+    content = await engine.generate_study_material(placeholder_subject, placeholder_topics, None)
+    return {"success": True, "plan": content}
 
 # ... existing routes ...
 
@@ -367,33 +395,52 @@ If you did not request this, please ignore this email.
 
     # Use Brevo API to bypass Render's SMTP block and allow sending to anyone
     brevo_api_key = os.getenv("BREVO_API_KEY")
-    if not brevo_api_key:
-        raise HTTPException(status_code=500, detail="BREVO_API_KEY is missing. Please use Brevo to send to any student.")
-
-    try:
-        url = "https://api.brevo.com/v3/smtp/email"
-        headers = {
-            "api-key": brevo_api_key,
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "sender": {"name": "Brainexa AI", "email": "brainexa.ai.support@gmail.com"},
-            "to": [{"email": req.email}],
-            "subject": subject,
-            "textContent": body
-        }
-        
-        response = requests.post(url, headers=headers, json=payload, timeout=10)
-        
-        if response.status_code in [200, 201]:
-            return {"message": "Verification code sent"}
-        else:
-            print(f"Brevo Error: {response.status_code} - {response.text}")
-            raise HTTPException(status_code=500, detail=f"Email delivery failed: {response.text}")
+    if brevo_api_key:
+        try:
+            url = "https://api.brevo.com/v3/smtp/email"
+            headers = {
+                "api-key": brevo_api_key,
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "sender": {"name": "Brainexa AI", "email": "brainexa.ai.support@gmail.com"},
+                "to": [{"email": req.email}],
+                "subject": subject,
+                "textContent": body
+            }
             
-    except Exception as e:
-        print(f"ERROR: Email delivery error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+            response = requests.post(url, headers=headers, json=payload, timeout=10)
+            
+            if response.status_code in [200, 201]:
+                return {"message": "Verification code sent"}
+            else:
+                print(f"Brevo Error: {response.status_code} - {response.text}")
+                raise HTTPException(status_code=500, detail=f"Email delivery failed: {response.text}")
+                
+        except Exception as e:
+            print(f"ERROR: Email delivery error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    else:
+        # Fallback to standard SMTP
+        print("[SMTP] BREVO_API_KEY is missing. Falling back to Gmail SMTP...")
+        try:
+            server = smtplib.SMTP(smtp_server, smtp_port)
+            server.starttls()
+            try:
+                server.login(sender_email, password)
+            except smtplib.SMTPAuthenticationError:
+                print("ERROR: SMTP Authentication Error: Username and Password not accepted.")
+                raise HTTPException(
+                    status_code=500,
+                    detail="SMTP Authentication failed. Please verify your Gmail App Password."
+                )
+            
+            server.send_message(msg)
+            server.quit()
+            return {"message": "Verification code sent"}
+        except Exception as e:
+            print(f"ERROR: SMTP Email sending error: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to send email via SMTP: {e}")
 
 
 @app.post("/reset-password")

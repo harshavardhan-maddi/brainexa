@@ -11,6 +11,7 @@ import { ConnectionStatus } from "@/components/ConnectionStatus";
 import { IntroScreen } from "@/components/IntroScreen";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { AnimatePresence } from "framer-motion";
+import { supabase } from "@/lib/supabase";
 
 const Index = lazy(() => import("./pages/Index"));
 const Login = lazy(() => import("./pages/Login"));
@@ -51,18 +52,43 @@ function SubscribedRoute({ children }: { children: React.ReactNode }) {
 
 // Component to handle socket connection
 function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useStore();
+  const { user, login } = useStore();
+
+  // Listen for Supabase auth changes (handles Google OAuth redirect + page refresh)
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session?.user && !user) {
+        // Fetch student profile from DB
+        const { data: profile } = await supabase
+          .from("students")
+          .select("*")
+          .eq("id", session.user.id)
+          .single();
+
+        await login({
+          id: session.user.id,
+          name: profile?.name || session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Student",
+          email: session.user.email!,
+          phone: profile?.phone || "",
+          plan: (profile?.plan as "free" | "premium") || "free",
+          createdAt: profile?.created_at || new Date().toISOString(),
+          profilePicture: profile?.profile_picture || session.user.user_metadata?.avatar_url || "",
+          studyStartDate: profile?.study_start_date,
+          studyEndDate: profile?.study_end_date,
+          syllabusUpdateCount: profile?.syllabus_update_count || 0,
+          syllabusUpdateAllowance: profile?.syllabus_update_allowance || 5,
+          rulesAccepted: profile?.rules_accepted || false,
+        });
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     if (user) {
-      // Connect to socket when user is logged in
       socketService.connect({ name: user.name, email: user.email });
     }
-
-    return () => {
-      // Disconnect when component unmounts or user logs out
-      socketService.disconnect();
-    };
+    return () => { socketService.disconnect(); };
   }, [user]);
 
   return <>{children}</>;

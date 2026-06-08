@@ -1,6 +1,7 @@
-// Simple in-memory store for demo (will be replaced with Lovable Cloud)
+// Store with Supabase Storage persistence for cross-device sync
 import { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "./api-config";
+import { getBrainexaData, setBrainexaData } from "./supabaseStorage";
 
 
 export interface User {
@@ -74,8 +75,6 @@ export interface LearningMaterial {
   createdAt: string;
 }
 
-const STORAGE_KEY = "brainexa_data";
-
 interface AppData {
   user: User | null;
   chatHistory: ChatMessage[];
@@ -102,27 +101,33 @@ const defaultData: AppData = {
   learningMaterials: [],
 };
 
-function loadData(): AppData {
+/** Load user data from Supabase Storage */
+async function loadRemoteData(userId: string): Promise<AppData> {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : {};
-    return { ...defaultData, ...parsed };
+    const remote = await getBrainexaData(userId);
+    return { ...defaultData, ...(remote ?? {}) };
   } catch {
     return defaultData;
   }
 }
 
-function saveData(data: AppData) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+/** Persist user data to Supabase Storage */
+async function persistRemoteData(data: AppData): Promise<void> {
+  if (data.user?.id) {
+    await setBrainexaData(data.user.id, data);
+  }
 }
 
 // Global state with listeners
-let state = loadData();
+let state: AppData = defaultData;
 const listeners = new Set<() => void>();
 
 function notify() {
-  saveData(state);
   listeners.forEach((l) => l());
+  // Fire-and-forget persistence to Supabase
+  persistRemoteData(state).catch((e) =>
+    console.error("[Brainexa] Failed to persist data:", e)
+  );
 }
 
 function generateSessionTitle(messages: ChatMessage[]): string {
@@ -146,7 +151,7 @@ export function useStore() {
     return () => { listeners.delete(listener); };
   }, []);
 
-  const login = useCallback((user: User, data?: any) => {
+  const login = useCallback(async (user: User, data?: any) => {
     if (data) {
       state = {
         ...state,
@@ -156,12 +161,17 @@ export function useStore() {
         studyPlan: data.studyPlan || [],
         studyProgress: data.studyProgress || 0,
         studentSubjects: data.subjects || [],
-        syllabusUpdateCount: user.syllabusUpdateCount || 0,
-        syllabusUpdateAllowance: user.syllabusUpdateAllowance || 5,
-        rulesAccepted: user.rulesAccepted || false
       };
     } else {
       state = { ...state, user };
+      // Load any additional data stored remotely in Supabase
+      const remote = await loadRemoteData(user.id);
+      if (remote) {
+        state = {
+          ...remote,
+          user, // always use the freshly logged-in user
+        };
+      }
     }
     notify();
   }, []);

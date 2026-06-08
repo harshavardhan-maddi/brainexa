@@ -3,11 +3,11 @@ import { useNavigate } from "react-router-dom";
 import AppLayout from "@/components/AppLayout";
 import { useStore } from "@/lib/store";
 import { toast } from "sonner";
-import { API_BASE_URL } from "@/lib/api-config";
+import { API_BASE_URL, PY_API_BASE_URL } from "@/lib/api-config";
 
 import {
   User, Mail, Camera, Trash2, LogOut, ShieldCheck,
-  Save, Loader2, Eye, EyeOff, AlertTriangle, Check
+  Save, Loader2, Eye, EyeOff, AlertTriangle, Check, RefreshCcw
 } from "lucide-react";
 import {
   AlertDialog,
@@ -26,7 +26,7 @@ const BACKEND = API_BASE_URL;
 type Section = "profile" | "email" | "danger";
 
 export default function Settings() {
-  const { user, logout, updateUser } = useStore();
+  const { user, logout, updateUser, fetchUserData } = useStore();
   const navigate = useNavigate();
 
   // -- Profile tab state --
@@ -45,8 +45,36 @@ export default function Settings() {
 
   // -- UI state --
   const [activeSection, setActiveSection] = useState<Section>("profile");
+  const [regeneratingPlan, setRegeneratingPlan] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
+
+  // --- Regenerate Study Plan ---
+  const handleRegeneratePlan = async () => {
+    if (!user) return;
+    const confirmed = window.confirm("This will delete your current subjects, scores, progress, and study plan. Continue?");
+    if (!confirmed) return;
+    setRegeneratingPlan(true);
+    try {
+      const res = await fetch(`${BACKEND}/api/user/reset-data`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "Failed to reset plan");
+      
+      // Sync local store
+      await fetchUserData(user.id);
+      
+      toast.success("Study plan, subjects, and scores deleted successfully!");
+      navigate("/study-plan");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to reset plan");
+    } finally {
+      setRegeneratingPlan(false);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -443,6 +471,33 @@ export default function Settings() {
                     Sign Out Now
                   </button>
                 </div>
+                            {/* Delete & Regenerate Plan Card */}
+                <div className="bg-card border border-yellow-500/30 rounded-2xl p-6 space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-yellow-500/10 flex items-center justify-center">
+                      <RefreshCcw className="w-4 h-4 text-yellow-500" />
+                    </div>
+                    <div>
+                      <h2 className="text-base font-bold text-yellow-500">Delete & Regenerate Plan</h2>
+                      <p className="text-xs text-muted-foreground">
+                        Delete your current study plan and generate a fresh one based on default settings.
+                      </p>
+                    </div>
+                  </div>
+                  <ul className="text-xs text-yellow-400 space-y-1">
+                    <li>⚠️ All current progress will be lost</li>
+                    <li>⚠️ A new plan will be created automatically</li>
+                  </ul>
+                  <button
+                    disabled={regeneratingPlan}
+                    onClick={handleRegeneratePlan}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-yellow-600 text-white font-bold text-sm hover:opacity-90 transition-all disabled:opacity-50 shadow-md"
+                  >
+                    {regeneratingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                    {regeneratingPlan ? "Regenerating..." : "Delete & Generate New Plan"}
+                  </button>
+                </div>
+                
 
                 {/* Delete Account Card */}
                 <div className="bg-card border border-red-500/30 rounded-2xl p-6 space-y-4">

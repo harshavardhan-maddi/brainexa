@@ -2407,6 +2407,31 @@ app.post('/api/user/delete-account', async (req, res) => {
   }
 });
 
+app.post('/api/user/reset-data', async (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ success: false, error: 'User ID is required' });
+  try {
+    // 1. Delete subjects (cascades to topics)
+    await pool.query('DELETE FROM subjects WHERE user_id = $1', [userId]);
+    // 2. Delete study plans
+    await pool.query('DELETE FROM study_plans WHERE user_id = $1', [userId]);
+    // 3. Delete quiz results
+    await pool.query('DELETE FROM quiz_results WHERE user_id = $1', [userId]);
+    // 4. Reset progress to 0
+    await pool.query('INSERT INTO progress (user_id, study_progress) VALUES ($1, 0) ON CONFLICT (user_id) DO UPDATE SET study_progress = 0', [userId]);
+    // 5. Delete topic progress
+    await pool.query('DELETE FROM topic_progress WHERE user_id = $1', [userId]);
+    // 6. Reset study dates on user
+    await pool.query('UPDATE users SET study_start_date = NULL, study_end_date = NULL WHERE id = $1', [userId]);
+
+    res.json({ success: true, message: 'Plan reset successfully' });
+  } catch (error) {
+    console.error('Reset Data Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 app.get('/api/knowledge/progress/:userId', async (req, res) => {
   const { userId } = req.params;
   try {
@@ -2491,7 +2516,34 @@ cron.schedule('59 23 * * *', async () => {
 });
 
 const PORT = process.env.PORT || 3001;
+// Error handling for server startup
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`❌ Port ${PORT} is already in use. Please free the port or change the PORT in .env.`);
+  } else if (err.code === 'EACCES') {
+    console.error(`❌ Permission denied for port ${PORT}. Try running with elevated privileges or use a different port.`);
+  } else {
+    console.error('❌ Server error:', err);
+  }
+});
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n🚀 Brainexa Backend v2.0 - Running on 0.0.0.0:${PORT}\n`);
 });
+
+// FastAPI server entry point
+const pyPort = process.env.PY_PORT || '8001';
+const pyHost = process.env.PY_HOST || '127.0.0.1';
+const { exec } = require('child_process');
+// Start FastAPI with uvicorn using env variables
+const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
+console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
+const child = exec(cmd, (error, stdout, stderr) => {
+  if (error) {
+    console.error(`FastAPI failed to start: ${error.message}`);
+  }
+  if (stderr) console.error(`FastAPI stderr: ${stderr}`);
+  if (stdout) console.log(`FastAPI stdout: ${stdout}`);
+});
+
 

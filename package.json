@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:server": "nodemon --watch server --watch .env --ext js server/index.js",
-    "dev:py": "cd server_py && python -m uvicorn main:app --reload --port 8000",
-    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev:py\" \"npm run dev\"",
+    "dev:py": "cd server_py && python -m uvicorn main:app --host 127.0.0.1 --port 8001",
+    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
@@ -45,6 +45,7 @@
     "@radix-ui/react-toggle-group": "^1.1.10",
     "@radix-ui/react-tooltip": "^1.2.7",
     "@react-oauth/google": "^0.13.4",
+    "@supabase/supabase-js": "^2.107.0",
     "@tanstack/react-query": "^5.83.0",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",

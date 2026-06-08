@@ -40,10 +40,11 @@ async def generate_material_with_performance(
     performance = determine_performance(quiz_results)
 
     # Adjust prompt based on performance
+    topics_list = "\n".join([f"- {t}" for t in topics])
     base_prompt = f"""
 Act as an expert educator and textbook author.
 Create a study guide for the subject \"{subject}\" covering the following topics:
-{"\n".join([f"- {t}" for t in topics])}
+{topics_list}
 """
     if performance in ("Perfect", "High"):
         # Concise material suitable for high performers

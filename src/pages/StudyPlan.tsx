@@ -4,7 +4,7 @@ import { useStore, StudentSubject } from "@/lib/store";
 import { generateStudyPlan, isAIConfigured, getAIProvider } from "@/lib/ai";
 import { motion } from "framer-motion";
 
-import { BookOpen, Plus, Trash2, Sparkles, CheckSquare, Square, ChevronDown, ChevronRight, X, Loader2, Target, CheckCircle2, XCircle, AlertTriangle, Camera, PartyPopper, Crown, Layout, ArrowRight, RefreshCw, Lock } from "lucide-react";
+import { BookOpen, Plus, Trash2, Sparkles, CheckSquare, Square, ChevronDown, ChevronRight, X, Loader2, Target, CheckCircle2, XCircle, AlertTriangle, Camera, PartyPopper, Crown, Layout, ArrowRight, RefreshCw, Lock, Coffee, Calendar } from "lucide-react";
 import { generateTopicQuiz, QuizQuestion } from "@/lib/ai";
 import { AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -21,6 +21,8 @@ export default function StudyPlan() {
   const [classLevel, setClassLevel] = useState("");
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+  const [rescheduleDate, setRescheduleDate] = useState("");
   const [startDate, setStartDate] = useState(user?.studyStartDate || new Date().toISOString().split('T')[0]);
   
   const [endDate, setEndDate] = useState(user?.studyEndDate || (() => {
@@ -292,6 +294,65 @@ export default function StudyPlan() {
     }
   };
 
+  const handleReschedule = async () => {
+    if (!rescheduleDate) {
+      toast.error("Please select a date to resume your plan.");
+      return;
+    }
+    
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    
+    const unchangedDays: typeof studyPlan = [];
+    const shiftedDays: typeof studyPlan = [];
+    
+    studyPlan.forEach(day => {
+      const isPast = day.date && day.date < todayStr;
+      const allTasksCompleted = day.tasks.every((_, tidx) => completedTasks.has(`${day.day}-${tidx}`));
+      
+      if (isPast || allTasksCompleted) {
+        unchangedDays.push(day);
+      } else {
+        shiftedDays.push(day);
+      }
+    });
+    
+    if (shiftedDays.length === 0) {
+      toast.info("No uncompleted days to reschedule.");
+      return;
+    }
+    
+    shiftedDays.sort((a, b) => a.day - b.day);
+    
+    const nextStartDate = new Date(rescheduleDate);
+    const updatedPlan = [...unchangedDays];
+    
+    shiftedDays.forEach((day, index) => {
+      const currentShiftedDate = new Date(nextStartDate);
+      currentShiftedDate.setDate(nextStartDate.getDate() + index);
+      const dateStr = `${currentShiftedDate.getFullYear()}-${String(currentShiftedDate.getMonth() + 1).padStart(2, '0')}-${String(currentShiftedDate.getDate()).padStart(2, '0')}`;
+      
+      updatedPlan.push({
+        ...day,
+        date: dateStr
+      });
+    });
+    
+    updatedPlan.sort((a, b) => a.day - b.day);
+    
+    const allDates = updatedPlan.map(d => d.date).filter(Boolean) as string[];
+    const minDate = allDates.reduce((min, d) => d < min ? d : min, user?.studyStartDate || todayStr);
+    const maxDate = allDates.reduce((max, d) => d > max ? d : max, user?.studyEndDate || todayStr);
+    
+    try {
+      await setStudyPlan(updatedPlan, minDate, maxDate);
+      toast.success(`Plan rescheduled successfully! Remaining tasks shifted to start from ${rescheduleDate}.`);
+      setShowRescheduleModal(false);
+    } catch (err) {
+      toast.error("Failed to reschedule study plan.");
+    }
+  };
+
   return (
     <AppLayout>
       <div className="max-w-4xl mx-auto">
@@ -301,10 +362,21 @@ export default function StudyPlan() {
             <p className="text-muted-foreground">Master your curriculum with AI-optimized scheduling</p>
           </div>
           {studyPlan.length > 0 && !editing && (
-            <button onClick={() => setEditing(true)} className="px-4 py-2 bg-secondary text-foreground rounded-xl font-bold hover:bg-secondary/80 transition-all flex items-center gap-2">
-              <RefreshCw className="w-4 h-4" />
-              Regenerate Plan
-            </button>
+            <div className="flex gap-2">
+              <button onClick={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                setRescheduleDate(tomorrow.toISOString().split('T')[0]);
+                setShowRescheduleModal(true);
+              }} className="px-4 py-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 rounded-xl font-bold hover:bg-amber-500/20 transition-all flex items-center gap-2">
+                <Coffee className="w-4 h-4" />
+                Take a Break / Reschedule
+              </button>
+              <button onClick={() => setEditing(true)} className="px-4 py-2 bg-secondary text-foreground rounded-xl font-bold hover:bg-secondary/80 transition-all flex items-center gap-2">
+                <RefreshCw className="w-4 h-4" />
+                Regenerate Plan
+              </button>
+            </div>
           )}
         </div>
 
@@ -483,6 +555,68 @@ export default function StudyPlan() {
           </div>
         )}
       </div>
+
+      {/* Reschedule / Take a Break Modal */}
+      <AnimatePresence>
+        {showRescheduleModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-background/90 backdrop-blur-xl p-4 overflow-y-auto">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card w-full max-w-md rounded-3xl p-8 shadow-2xl border border-border relative animate-in fade-in-50 duration-200"
+            >
+              <button 
+                onClick={() => setShowRescheduleModal(false)}
+                className="absolute top-4 right-4 p-2 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="text-center mb-6">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4 text-amber-500">
+                  <Coffee className="w-8 h-8" />
+                </div>
+                <h3 className="font-display text-xl font-bold text-foreground">Take a Break & Reschedule</h3>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Select the date you want to resume studying. All remaining uncompleted tasks will shift sequentially from that day forward.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2 block">Resume Date</label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      min={new Date().toISOString().split('T')[0]}
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                      className="w-full bg-secondary rounded-xl px-5 py-4 font-medium border-2 border-transparent focus:border-amber-500 outline-none transition-all"
+                    />
+                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setShowRescheduleModal(false)}
+                    className="flex-1 bg-secondary text-foreground py-3.5 rounded-xl font-bold hover:bg-secondary/80 transition-all text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleReschedule}
+                    className="flex-1 bg-amber-500 text-white py-3.5 rounded-xl font-bold hover:opacity-90 shadow-lg shadow-amber-500/20 transition-all text-sm flex items-center justify-center gap-2"
+                  >
+                    <Calendar className="w-4 h-4" /> Confirm Date
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Quiz Modal (Existing logic) */}
       <AnimatePresence>
