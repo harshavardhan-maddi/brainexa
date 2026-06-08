@@ -114,7 +114,7 @@ async function sendTaskCompletionEmail(userId, subject, topic) {
             </div>
 
             <div style="margin-top: 40px; text-align: center;">
-              <a href="${process.env.FRONTEND_URL || 'http://localhost:8080'}/dashboard" style="background: #8b5cf6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.3);">Continue to Dashboard</a>
+              <a href="${process.env.FRONTEND_URL || 'https://www.brainexa.co.in'}/dashboard" style="background: #8b5cf6; color: white; padding: 16px 32px; text-decoration: none; border-radius: 12px; font-weight: 800; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px -1px rgba(139, 92, 246, 0.3);">Continue to Dashboard</a>
             </div>
           </div>
 
@@ -155,7 +155,7 @@ const razorpay = process.env.RAZORPAY_KEY_ID ? new Razorpay({
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: [process.env.FRONTEND_URL || "http://localhost:8080", "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:8080"],
+    origin: [process.env.FRONTEND_URL || "https://www.brainexa.co.in", "http://localhost:8080", "http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:8080"],
     methods: ["GET", "POST"]
   }
 });

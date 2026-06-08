@@ -282,7 +282,7 @@ def send_reset_email(to_email: str, token: str):
 
     subject = "Reset Your Brainexa Password"
     # Frontend URL (standard port 8080/3000 depends on user env, but the prompt said 3000)
-    reset_link = f"{os.getenv('FRONTEND_URL', 'http://localhost:8080')}/reset-password?token={token}"
+    reset_link = f"{os.getenv('FRONTEND_URL', 'https://www.brainexa.co.in')}/reset-password?token={token}"
 
     body = f"""Hello,
 
