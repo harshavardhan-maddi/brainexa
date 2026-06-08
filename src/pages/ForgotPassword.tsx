@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { BookOpen, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { PY_API_BASE_URL } from "@/lib/api-config";
+import { supabase } from "@/lib/supabase";
 
 
 export default function ForgotPassword() {
@@ -20,21 +20,17 @@ export default function ForgotPassword() {
 
     setLoading(true);
     try {
-      // Call FastAPI backend (running on port 8000)
-      const res = await fetch(`${PY_API_BASE_URL}/forgot-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
-      const data = await res.json();
-      if (res.ok) {
+      if (error) {
+        toast.error(error.message || "Failed to send reset link.");
+      } else {
         setSubmitted(true);
         toast.success("Reset link sent successfully!");
-      } else {
-        toast.error(data.detail || "Failed to send reset link.");
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Forgot password error:", err);
       toast.error("Connection error. Please try again.");
     } finally {
