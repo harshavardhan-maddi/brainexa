@@ -49,7 +49,10 @@ load_dotenv(dotenv_path=env_path, override=True)
 
 print("[STARTUP] Loading KnowledgeEngine...")
 try:
-    from .knowledge_engine import KnowledgeEngine
+    try:
+        from .knowledge_engine import KnowledgeEngine
+    except ImportError:
+        from knowledge_engine import KnowledgeEngine
     engine = KnowledgeEngine()
     print("[STARTUP] KnowledgeEngine loaded.")
 except Exception as e:
