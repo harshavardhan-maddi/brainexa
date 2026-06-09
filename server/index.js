@@ -2003,7 +2003,7 @@ app.post('/api/user/accept-rules', async (req, res) => {
   }
 });
 
-app.post('/upload-syllabus', upload.single('syllabus'), async (req, res) => {
+app.post('/api/upload-syllabus', upload.single('syllabus'), async (req, res) => {
   try {
     const { userId } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file' });
@@ -2075,7 +2075,7 @@ app.post('/generate-plan', async (req, res) => {
   res.json({ success: true, plan });
 });
 
-app.post('/chat', async (req, res) => {
+app.post('/api/chat', async (req, res) => {
   try {
     const { message, userId, history, context } = req.body;
     let response = await callAI(message, false, history || [], context || {});
