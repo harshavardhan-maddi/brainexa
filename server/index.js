@@ -1277,7 +1277,17 @@ app.post('/api/admin/login', async (req, res) => {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
 
-    if (!user || (user.role !== 'admin' && user.role !== 'sub_admin') || !(await bcrypt.compare(password, user.password))) {
+    if (!user || (user.role !== 'admin' && user.role !== 'sub_admin')) {
+      return res.status(401).json({ success: false, error: 'Invalid admin or sub-admin credentials' });
+    }
+
+    if (!user.password) {
+      console.warn(`⚠️ Admin login attempt failed: User ${email} does not have a local password set (OAuth or Supabase user)`);
+      return res.status(401).json({ success: false, error: 'Invalid admin or sub-admin credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password).catch(() => false);
+    if (!isMatch) {
       return res.status(401).json({ success: false, error: 'Invalid admin or sub-admin credentials' });
     }
 

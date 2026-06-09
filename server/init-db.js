@@ -1,4 +1,5 @@
 import pool from './db.js';
+import bcrypt from 'bcryptjs';
 
 const initDB = async () => {
   try {
@@ -256,6 +257,27 @@ const initDB = async () => {
       ALTER COLUMN action DROP NOT NULL;
     `);
     console.log('✅ Activity logs table migrations verified');
+
+    // 5. Seed default admin if needed or update their password/role
+    console.log('👤 Seeding default admin...');
+    const adminEmail = 'admin@brainexa.com';
+    const adminPassword = 'Brainexa@admin';
+    const adminName = 'System Administrator';
+    const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+    const existingAdmin = await pool.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
+    if (existingAdmin.rows.length > 0) {
+      await pool.query(
+        'UPDATE users SET password = $1, role = $2, name = $3 WHERE email = $4',
+        [hashedAdminPassword, 'admin', adminName, adminEmail]
+      );
+      console.log('✅ Admin user updated in database');
+    } else {
+      await pool.query(
+        'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4)',
+        [adminName, adminEmail, hashedAdminPassword, 'admin']
+      );
+      console.log('✅ Admin user created in database');
+    }
 
     console.log('✅ Database tables initialized and migrated successfully');
   } catch (error) {
