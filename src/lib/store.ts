@@ -412,7 +412,11 @@ export function useStore() {
 
   const fetchUserData = useCallback(async (userId: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user-data/${userId}`);
+      const email = state.user?.email;
+      const url = email
+        ? `${API_BASE_URL}/api/user-data/${userId}?email=${encodeURIComponent(email)}`
+        : `${API_BASE_URL}/api/user-data/${userId}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch user data');
       const { data, user: freshUser } = await res.json();
       if (data) {
@@ -426,6 +430,21 @@ export function useStore() {
           studentSubjects: data.subjects || [],
           learningMaterials: data.learningMaterials || [],
         };
+        
+        // Keep Supabase's local students table profile in sync with their Premium status
+        if (freshUser && freshUser.plan === 'premium') {
+          try {
+            await supabase.from("students").upsert({
+              id: userId,
+              name: freshUser.name,
+              email: freshUser.email,
+              plan: 'premium',
+            });
+          } catch (supaErr) {
+            console.warn("Failed to sync premium plan status to Supabase profile:", supaErr);
+          }
+        }
+
         if (localStorage.getItem("localStudentUser")) {
           localStorage.setItem("localStudentUser", JSON.stringify({ user: state.user, data }));
         }

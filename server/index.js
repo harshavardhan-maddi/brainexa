@@ -2235,22 +2235,78 @@ app.post('/api/tts', async (req, res) => {
 
 app.get('/api/user-data/:userId', async (req, res) => {
   const { userId } = req.params;
+  const { email } = req.query;
   if (!userId) return res.status(400).json({ error: 'Missing userId' });
 
   try {
     // Fetch user first
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    let userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    
+    // Fallback: If not found by ID but email is provided, sync Google Auth ID with existing user record
+    if (userResult.rows.length === 0 && email) {
+      const emailResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+      if (emailResult.rows.length > 0) {
+        const oldUser = emailResult.rows[0];
+        const oldId = oldUser.id;
+        const newId = userId;
+
+        try {
+          await pool.query('BEGIN');
+          // 1. Temporary update to old email to prevent unique key violation
+          await pool.query('UPDATE users SET email = $1 WHERE id = $2', [email + '_old_' + Date.now(), oldId]);
+          
+          // 2. Insert new record with the Google Auth ID
+          await pool.query(`
+            INSERT INTO users (id, name, email, password, role, is_blocked, plan, profile_picture, reset_token, token_expiry, institute, added_by, syllabus_update_allowance, rules_accepted, study_start_date, study_end_date, syllabus_update_count)
+            SELECT $1, name, $2, password, role, is_blocked, plan, profile_picture, reset_token, token_expiry, institute, added_by, syllabus_update_allowance, rules_accepted, study_start_date, study_end_date, syllabus_update_count
+            FROM users WHERE id = $3
+          `, [newId, email, oldId]);
+
+          // 3. Update all child table references
+          await pool.query('UPDATE subjects SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE study_plans SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE quiz_results SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          
+          const progressCheck = await pool.query('SELECT user_id FROM progress WHERE user_id = $1', [newId]);
+          if (progressCheck.rows.length > 0) {
+            await pool.query('DELETE FROM progress WHERE user_id = $1', [newId]);
+          }
+          await pool.query('UPDATE progress SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          
+          await pool.query('UPDATE chat_history SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE payments SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE learning_materials SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE knowledge_logs SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE learning_sessions SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE topic_progress SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE email_change_logs SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+          await pool.query('UPDATE activity_logs SET user_id = $1 WHERE user_id = $2', [newId, oldId]);
+
+          // 4. Delete the old record
+          await pool.query('DELETE FROM users WHERE id = $1', [oldId]);
+          await pool.query('COMMIT');
+          console.log(`✅ Synced user ${email} from local admin ID ${oldId} to Google Auth ID ${newId}`);
+
+          userResult = await pool.query('SELECT * FROM users WHERE id = $1', [newId]);
+        } catch (syncErr) {
+          await pool.query('ROLLBACK');
+          console.error('❌ Failed to sync user IDs:', syncErr);
+          return res.status(500).json({ error: 'Failed to sync user database record: ' + syncErr.message });
+        }
+      }
+    }
+
     if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     const user = userResult.rows[0];
 
     // Fetch related data (exact same as login)
-    const subjects = await pool.query('SELECT * FROM subjects WHERE user_id = $1', [userId]);
-    const studyPlan = await pool.query('SELECT * FROM study_plans WHERE user_id = $1 ORDER BY day', [userId]);
-    const quizResults = await pool.query('SELECT * FROM quiz_results WHERE user_id = $1', [userId]);
-    const progress = await pool.query('SELECT study_progress FROM progress WHERE user_id = $1', [userId]);
-    const chatHistory = await pool.query('SELECT * FROM chat_history WHERE user_id = $1 ORDER BY timestamp', [userId]);
+    const subjects = await pool.query('SELECT * FROM subjects WHERE user_id = $1', [user.id]);
+    const studyPlan = await pool.query('SELECT * FROM study_plans WHERE user_id = $1 ORDER BY day', [user.id]);
+    const quizResults = await pool.query('SELECT * FROM quiz_results WHERE user_id = $1', [user.id]);
+    const progress = await pool.query('SELECT study_progress FROM progress WHERE user_id = $1', [user.id]);
+    const chatHistory = await pool.query('SELECT * FROM chat_history WHERE user_id = $1 ORDER BY timestamp', [user.id]);
 
     // Format subjects with topics
     const subjectsWithTopics = await Promise.all(subjects.rows.map(async (s) => {
