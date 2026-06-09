@@ -156,6 +156,9 @@ export default function Subscription() {
                     >
                       {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Join Premium <ArrowRight className="w-4 h-4" /></>}
                     </button>
+                    <p className="text-[11px] text-pink-500 font-bold text-center mt-1">
+                      ⚠️ Note: Please enter exactly ₹299 as the amount on the payment page.
+                    </p>
                     
                     <button
                       onClick={() => setShowUpiInput(true)}
@@ -196,6 +199,9 @@ export default function Subscription() {
                     >
                       {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Send ₹299 Request</>}
                     </button>
+                    <p className="text-[11px] text-pink-500 font-bold text-center mt-1">
+                      ⚠️ Note: Please enter exactly ₹299 as the amount on the payment page.
+                    </p>
                     <button
                       onClick={() => setShowUpiInput(false)}
                       className="w-full text-muted-foreground text-sm font-semibold flex items-center justify-center gap-2 py-2"
