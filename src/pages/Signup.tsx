@@ -23,8 +23,15 @@ export default function Signup() {
   const [loading, setLoading] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const { login } = useStore();
+  const { user, login } = useStore();
   const navigate = useNavigate();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (user) {
+      navigate(user.plan === "free" ? "/subscription" : "/home");
+    }
+  }, [user, navigate]);
 
   // Step 0: Show terms first, then send OTP
   const handleContinue = (e: React.FormEvent) => {

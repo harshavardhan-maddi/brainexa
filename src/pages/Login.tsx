@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
 import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
@@ -13,8 +13,15 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const { login, fetchUserData } = useStore();
+  const { user, login, fetchUserData } = useStore();
   const navigate = useNavigate();
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (user) {
+      navigate(user.plan === "free" ? "/subscription" : "/home");
+    }
+  }, [user, navigate]);
 
   // ── Manual email/password login via Supabase Auth ──────────────────────────
   const handleLogin = async (e: React.FormEvent) => {
