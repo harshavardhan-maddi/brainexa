@@ -134,6 +134,57 @@ async function sendTaskCompletionEmail(userId, subject, topic) {
     console.error('🔥 Failed to send completion email:', error);
   }
 }
+
+async function sendWelcomeEmail(email, name, password, institute) {
+  console.log(`📧 Admin: Preparing welcome email for ${email}...`);
+  try {
+    const mailOptions = {
+      from: `"Brainexa AI Mentor" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: `🎉 Welcome to Brainexa! Your account is ready`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 24px; overflow: hidden; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%); padding: 48px 32px; text-align: center;">
+            <div style="background: rgba(255,255,255,0.2); width: 64px; height: 64px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+              <span style="font-size: 32px;">🎓</span>
+            </div>
+            <h1 style="color: white; margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em;">Welcome to Brainexa!</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 16px;">Your premium learning account has been created by your administrator.</p>
+          </div>
+          
+          <div style="padding: 40px 32px; color: #1e293b;">
+            <p style="font-size: 16px; line-height: 1.6; color: #475569;">Hello <strong>${name}</strong>,</p>
+            <p style="font-size: 16px; line-height: 1.6; color: #475569;">An account has been created for you at <strong>${institute}</strong> with premium access to Brainexa.</p>
+            
+            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 20px; padding: 24px; margin: 32px 0;">
+              <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 800; color: #8b5cf6; text-transform: uppercase; letter-spacing: 0.05em;">Your Login Credentials</h3>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #475569;"><strong>Portal URL:</strong> <a href="${process.env.FRONTEND_URL || 'https://www.brainexa.co.in'}/login" style="color: #8b5cf6; text-decoration: underline;">Login Page</a></p>
+              <p style="margin: 0 0 8px 0; font-size: 14px; color: #475569;"><strong>Email Address:</strong> ${email}</p>
+              <p style="margin: 0; font-size: 14px; color: #475569;"><strong>Temporary Password:</strong> <code style="font-family: monospace; background: #e2e8f0; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${password}</code></p>
+            </div>
+
+            <div style="border-left: 4px solid #8b5cf6; padding-left: 16px; margin: 32px 0;">
+              <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #64748b; font-style: italic;">
+                <strong>Change Password:</strong> You can change your password at any time. Simply click the "Forgot Password" link on the login screen, enter your email address, and follow the link to set a new password.
+              </p>
+            </div>
+
+            <p style="font-size: 14px; line-height: 1.6; color: #64748b; margin-top: 32px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+              If you have any questions, contact your school administrator or reply to this support email.
+            </p>
+            <p style="font-size: 14px; font-weight: bold; color: #475569; margin: 16px 0 0 0;">Best of luck in your studies,<br>The Brainexa AI Team</p>
+          </div>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log(`✅ Welcome email sent to ${email}`);
+  } catch (error) {
+    console.error(`❌ Failed to send welcome email to ${email}:`, error);
+  }
+}
+
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 
@@ -213,9 +264,10 @@ const isAdmin = async (req, res, next) => {
   if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
   try {
-    const result = await pool.query('SELECT role FROM users WHERE id = $1', [userId]);
+    const result = await pool.query('SELECT id, name, email, role, institute FROM users WHERE id = $1', [userId]);
     if (result.rows.length > 0 && result.rows[0].role === 'admin') {
       console.log('✅ Admin Access Granted');
+      req.adminUser = result.rows[0];
       next();
     } else {
       console.log('❌ Admin Access Denied for role:', result.rows[0]?.role);
@@ -223,6 +275,27 @@ const isAdmin = async (req, res, next) => {
     }
   } catch (err) {
     console.error('🔥 Admin Middleware Error:', err);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+};
+
+const isAdminOrSubAdmin = async (req, res, next) => {
+  const userId = req.headers['x-user-id'];
+  console.log('🛡️ Admin/Sub-Admin Check for User:', userId);
+  if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+  try {
+    const result = await pool.query('SELECT id, name, email, role, institute FROM users WHERE id = $1', [userId]);
+    if (result.rows.length > 0 && (result.rows[0].role === 'admin' || result.rows[0].role === 'sub_admin')) {
+      console.log('✅ Admin/Sub-Admin Access Granted for role:', result.rows[0].role);
+      req.adminUser = result.rows[0];
+      next();
+    } else {
+      console.log('❌ Admin/Sub-Admin Access Denied for role:', result.rows[0]?.role);
+      res.status(403).json({ success: false, error: 'Forbidden: Admin or Sub-Admin access required' });
+    }
+  } catch (err) {
+    console.error('🔥 Admin/Sub-Admin Middleware Error:', err);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 };
@@ -1089,6 +1162,111 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ success: false, error: 'Email is required' });
+
+  try {
+    const result = await pool.query('SELECT id, name FROM users WHERE email = $1', [email]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found with this email' });
+    }
+
+    const user = result.rows[0];
+    const token = crypto.randomBytes(20).toString('hex');
+    const expiry = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
+
+    await pool.query(
+      'UPDATE users SET reset_token = $1, token_expiry = $2 WHERE email = $3',
+      [token, expiry, email]
+    );
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:8080';
+    const resetLink = `${frontendUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+
+    const mailOptions = {
+      from: `"Brainexa Support" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: '🔑 Reset Your Brainexa Password',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 24px; overflow: hidden; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%); padding: 48px 32px; text-align: center;">
+            <div style="background: rgba(255,255,255,0.2); width: 64px; height: 64px; border-radius: 16px; display: inline-flex; align-items: center; justify-content: center; margin-bottom: 24px;">
+              <span style="font-size: 32px;">🔑</span>
+            </div>
+            <h1 style="color: white; margin: 0; font-size: 24px; font-weight: 800;">Password Reset Request</h1>
+            <p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 15px;">You requested to reset your password on Brainexa.</p>
+          </div>
+          
+          <div style="padding: 40px 32px; color: #1e293b;">
+            <p style="font-size: 16px; line-height: 1.6; color: #475569;">Hello ${user.name},</p>
+            <p style="font-size: 16px; line-height: 1.6; color: #475569;">Please click the button below to choose a new password. This link will expire in 15 minutes.</p>
+            
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${resetLink}" style="background: linear-gradient(135deg, #8b5cf6 0%, #d946ef 100%); color: white; padding: 14px 28px; border-radius: 12px; font-weight: bold; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2);">Reset Password</a>
+            </div>
+
+            <p style="font-size: 14px; color: #64748b; margin-top: 32px; line-height: 1.5;">
+              If the button above does not work, copy and paste this URL into your browser:<br>
+              <a href="${resetLink}" style="color: #8b5cf6; word-break: break-all;">${resetLink}</a>
+            </p>
+            
+            <p style="font-size: 14px; line-height: 1.6; color: #64748b; margin-top: 24px; border-top: 1px solid #f1f5f9; padding-top: 24px;">
+              If you did not request a password reset, please ignore this email. Your password will remain unchanged.
+            </p>
+          </div>
+        </div>
+      `
+    };
+
+    await transporter.sendMail(mailOptions);
+    res.json({ success: true, message: 'Password reset link sent to your email.' });
+  } catch (error) {
+    console.error('Forgot Password Endpoint Error:', error);
+    res.status(500).json({ success: false, error: 'Database error or email transport failure' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  const { email, token, password } = req.body;
+  if (!email || !token || !password) {
+    return res.status(400).json({ success: false, error: 'Missing required fields' });
+  }
+
+  try {
+    const userRes = await pool.query(
+      'SELECT id, reset_token, token_expiry FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const user = userRes.rows[0];
+
+    if (!user.reset_token || user.reset_token !== token) {
+      return res.status(400).json({ success: false, error: 'Invalid reset token' });
+    }
+
+    if (new Date() > new Date(user.token_expiry)) {
+      return res.status(400).json({ success: false, error: 'Reset token has expired' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await pool.query(
+      'UPDATE users SET password = $1, reset_token = NULL, token_expiry = NULL WHERE id = $2',
+      [hashedPassword, user.id]
+    );
+
+    res.json({ success: true, message: 'Password has been reset successfully.' });
+  } catch (error) {
+    console.error('Reset Password Endpoint Error:', error);
+    res.status(500).json({ success: false, error: 'Server error during password reset' });
+  }
+});
+
 // --- ADMIN ROUTES ---
 
 app.post('/api/admin/login', async (req, res) => {
@@ -1099,8 +1277,8 @@ app.post('/api/admin/login', async (req, res) => {
     const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
     const user = result.rows[0];
 
-    if (!user || user.role !== 'admin' || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ success: false, error: 'Invalid admin credentials' });
+    if (!user || (user.role !== 'admin' && user.role !== 'sub_admin') || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ success: false, error: 'Invalid admin or sub-admin credentials' });
     }
 
     res.json({
@@ -1109,7 +1287,8 @@ app.post('/api/admin/login', async (req, res) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        institute: user.institute
       }
     });
   } catch (error) {
@@ -1118,12 +1297,94 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
-app.get('/api/admin/users', isAdmin, async (req, res) => {
-  console.log('📋 Fetching students for admin...');
+app.post('/api/admin/create-sub-admin', isAdmin, async (req, res) => {
+  const { name, email, password, institute } = req.body;
+  if (!name || !email || !password || !institute) {
+    return res.status(400).json({ success: false, error: 'All fields (name, email, password, institute) are required' });
+  }
+
+  try {
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ success: false, error: 'Email already registered' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password, role, plan, institute, added_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role, institute, created_at',
+      [name, email, hashedPassword, 'sub_admin', 'premium', institute, req.adminUser.id]
+    );
+
+    res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error('Create Sub-Admin Error:', error);
+    res.status(500).json({ success: false, error: 'Database error during registration' });
+  }
+});
+
+app.post('/api/admin/create-student', isAdminOrSubAdmin, async (req, res) => {
+  const { name, email, password } = req.body;
+  let { institute } = req.body;
+
+  if (!name || !email || !password) {
+    return res.status(400).json({ success: false, error: 'All fields (name, email, password) are required' });
+  }
+
+  if (req.adminUser.role === 'sub_admin') {
+    institute = req.adminUser.institute;
+  } else if (!institute) {
+    return res.status(400).json({ success: false, error: 'Institute is required for admin role' });
+  }
+
+  try {
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ success: false, error: 'Email already registered' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      'INSERT INTO users (name, email, password, role, plan, institute, added_by) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role, plan, institute, created_at',
+      [name, email, hashedPassword, 'student', 'premium', institute, req.adminUser.id]
+    );
+
+    const newUser = result.rows[0];
+
+    // Initialize progress
+    await pool.query('INSERT INTO progress (user_id, study_progress) VALUES ($1, 0) ON CONFLICT DO NOTHING', [newUser.id]);
+
+    // Send welcome email asynchronously
+    sendWelcomeEmail(email, name, password, institute);
+
+    res.json({ success: true, user: newUser });
+  } catch (error) {
+    console.error('Create Student Error:', error);
+    res.status(500).json({ success: false, error: 'Database error during registration' });
+  }
+});
+
+app.get('/api/admin/sub-admins', isAdmin, async (req, res) => {
+  console.log('📋 Fetching sub-admins for super admin...');
   try {
     const result = await pool.query(`
+      SELECT id, name, email, institute, created_at, role, is_blocked
+      FROM users
+      WHERE role = 'sub_admin'
+      ORDER BY created_at DESC
+    `);
+    res.json({ success: true, subAdmins: result.rows });
+  } catch (error) {
+    console.error('🔥 Fetch Sub-Admins Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get('/api/admin/users', isAdminOrSubAdmin, async (req, res) => {
+  console.log('📋 Fetching students for admin/sub-admin...', req.adminUser.role, req.adminUser.institute);
+  try {
+    let query = `
       SELECT 
-        u.id, u.name, u.email, u.created_at, u.role, u.is_blocked,
+        u.id, u.name, u.email, u.created_at, u.role, u.is_blocked, u.institute,
         u.study_start_date, u.study_end_date,
         p.study_progress, p.updated_at as last_active,
         (SELECT json_agg(name) FROM subjects WHERE user_id = u.id) as subjects,
@@ -1131,9 +1392,19 @@ app.get('/api/admin/users', isAdmin, async (req, res) => {
         (SELECT created_at FROM activity_logs WHERE user_id = u.id AND action = 'logout' ORDER BY created_at DESC LIMIT 1) as last_logout
       FROM users u
       LEFT JOIN progress p ON u.id = p.user_id
-      WHERE u.role != 'admin' OR u.role IS NULL
-      ORDER BY u.created_at DESC
-    `);
+    `;
+    
+    let queryParams = [];
+    if (req.adminUser.role === 'sub_admin') {
+      query += ` WHERE (u.role = 'student' OR u.role IS NULL) AND u.institute = $1 `;
+      queryParams.push(req.adminUser.institute);
+    } else {
+      query += ` WHERE u.role != 'admin' AND u.role != 'sub_admin' OR u.role IS NULL `;
+    }
+    
+    query += ` ORDER BY u.created_at DESC `;
+    
+    const result = await pool.query(query, queryParams);
 
     console.log(`📊 Found ${result.rows.length} potential students`);
 
@@ -1168,10 +1439,18 @@ app.get('/api/admin/users', isAdmin, async (req, res) => {
   }
 });
 
-app.get('/api/admin/user/:id/report', isAdmin, async (req, res) => {
+app.get('/api/admin/user/:id/report', isAdminOrSubAdmin, async (req, res) => {
   const { id } = req.params;
   const { start, end } = req.query;
   try {
+    const userRes = await pool.query('SELECT institute, role FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = userRes.rows[0];
+
+    if (req.adminUser.role === 'sub_admin' && student.institute !== req.adminUser.institute) {
+      return res.status(403).json({ success: false, error: 'Forbidden: You cannot access reports for students of other institutes' });
+    }
+
     const progress = await pool.query(`
       SELECT study_progress, updated_at 
       FROM progress 
@@ -1207,7 +1486,6 @@ app.get('/api/admin/user/:id/report', isAdmin, async (req, res) => {
 
 app.get('/api/admin/analytics', isAdmin, async (req, res) => {
   try {
-    // 1. Subject Popularity
     const subjectStats = await pool.query(`
       SELECT name, COUNT(*) as count 
       FROM subjects 
@@ -1215,7 +1493,6 @@ app.get('/api/admin/analytics', isAdmin, async (req, res) => {
       ORDER BY count DESC
     `);
 
-    // 2. Material Usage
     const materialStats = await pool.query(`
       SELECT 
         COUNT(*) as total_generated,
@@ -1223,7 +1500,6 @@ app.get('/api/admin/analytics', isAdmin, async (req, res) => {
       FROM knowledge_logs
     `);
 
-    // 3. Drop-off Analysis (where progress stops)
     const dropOffStats = await pool.query(`
       SELECT topic, COUNT(*) as fail_count
       FROM quiz_results
@@ -1246,9 +1522,17 @@ app.get('/api/admin/analytics', isAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/user/:id/reset', isAdmin, async (req, res) => {
+app.post('/api/admin/user/:id/reset', isAdminOrSubAdmin, async (req, res) => {
   const { id } = req.params;
   try {
+    const userRes = await pool.query('SELECT institute FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = userRes.rows[0];
+
+    if (req.adminUser.role === 'sub_admin' && student.institute !== req.adminUser.institute) {
+      return res.status(403).json({ success: false, error: 'Forbidden: You cannot reset students of other institutes' });
+    }
+
     await pool.query('UPDATE progress SET study_progress = 0 WHERE user_id = $1', [id]);
     await pool.query('DELETE FROM quiz_results WHERE user_id = $1', [id]);
     await pool.query('DELETE FROM activity_logs WHERE user_id = $1', [id]);
@@ -1258,10 +1542,18 @@ app.post('/api/admin/user/:id/reset', isAdmin, async (req, res) => {
   }
 });
 
-app.post('/api/admin/user/:id/block', isAdmin, async (req, res) => {
+app.post('/api/admin/user/:id/block', isAdminOrSubAdmin, async (req, res) => {
   const { id } = req.params;
   const { block } = req.body;
   try {
+    const userRes = await pool.query('SELECT institute FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = userRes.rows[0];
+
+    if (req.adminUser.role === 'sub_admin' && student.institute !== req.adminUser.institute) {
+      return res.status(403).json({ success: false, error: 'Forbidden: You cannot block students of other institutes' });
+    }
+
     await pool.query('UPDATE users SET is_blocked = $1 WHERE id = $2', [block, id]);
     res.json({ success: true });
   } catch (error) {
@@ -1269,9 +1561,17 @@ app.post('/api/admin/user/:id/block', isAdmin, async (req, res) => {
   }
 });
 
-app.delete('/api/admin/user/:id', isAdmin, async (req, res) => {
+app.delete('/api/admin/user/:id', isAdminOrSubAdmin, async (req, res) => {
   const { id } = req.params;
   try {
+    const userRes = await pool.query('SELECT institute FROM users WHERE id = $1', [id]);
+    if (userRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Student not found' });
+    const student = userRes.rows[0];
+
+    if (req.adminUser.role === 'sub_admin' && student.institute !== req.adminUser.institute) {
+      return res.status(403).json({ success: false, error: 'Forbidden: You cannot delete students of other institutes' });
+    }
+
     await pool.query('DELETE FROM users WHERE id = $1', [id]);
     res.json({ success: true });
   } catch (error) {

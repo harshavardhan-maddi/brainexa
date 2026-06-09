@@ -163,6 +163,7 @@ export function useStore() {
         studyProgress: data.studyProgress || 0,
         studentSubjects: data.subjects || [],
       };
+      localStorage.setItem("localStudentUser", JSON.stringify({ user, data }));
     } else {
       state = { ...state, user };
       // Load any additional data stored remotely in Supabase
@@ -189,6 +190,7 @@ export function useStore() {
         console.error("Failed to log logout activity", e);
       }
     }
+    localStorage.removeItem("localStudentUser");
     try {
       await supabase.auth.signOut();
     } catch (e) {
@@ -424,6 +426,9 @@ export function useStore() {
           studentSubjects: data.subjects || [],
           learningMaterials: data.learningMaterials || [],
         };
+        if (localStorage.getItem("localStudentUser")) {
+          localStorage.setItem("localStudentUser", JSON.stringify({ user: state.user, data }));
+        }
         notify();
       }
     } catch (error) {

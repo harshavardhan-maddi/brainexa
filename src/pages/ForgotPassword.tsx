@@ -4,6 +4,7 @@ import { BookOpen, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { API_BASE_URL } from "@/lib/api-config";
 
 
 export default function ForgotPassword() {
@@ -25,14 +26,25 @@ export default function ForgotPassword() {
       });
 
       if (error) {
-        toast.error(error.message || "Failed to send reset link.");
-      } else {
-        setSubmitted(true);
-        toast.success("Reset link sent successfully!");
+        console.warn("Supabase forgot password failed, trying local DB fallback:", error.message);
+        
+        const response = await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email })
+        });
+        
+        const localRes = await response.json();
+        if (!localRes.success) {
+          throw new Error(localRes.error || "Failed to send reset link.");
+        }
       }
+
+      setSubmitted(true);
+      toast.success("Reset link sent successfully!");
     } catch (err: any) {
       console.error("Forgot password error:", err);
-      toast.error("Connection error. Please try again.");
+      toast.error(err.message || "Connection error. Please try again.");
     } finally {
       setLoading(false);
     }

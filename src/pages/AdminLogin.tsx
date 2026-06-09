@@ -29,16 +29,20 @@ export default function AdminLogin() {
       const data = await response.json();
 
       if (data.success) {
-        // Store admin session in Supabase instead of localStorage
-        await supabase.from("admin_sessions").upsert({
-          id: data.user.id,
-          email: data.user.email,
-          name: data.user.name,
-          last_login: new Date().toISOString(),
-        });
+        // Store admin session in Supabase safely (prevent crash if table/permission fails)
+        try {
+          await supabase.from("admin_sessions").upsert({
+            id: data.user.id,
+            email: data.user.email,
+            name: data.user.name,
+            last_login: new Date().toISOString(),
+          });
+        } catch (supaErr) {
+          console.warn("Failed to log admin session to Supabase:", supaErr);
+        }
         // Keep a short-lived sessionStorage reference for this browser tab only
         sessionStorage.setItem("adminUser", JSON.stringify(data.user));
-        toast.success("Welcome, Administrator");
+        toast.success(data.user.role === "admin" ? "Welcome, Administrator" : `Welcome, Sub-Admin of ${data.user.institute}`);
         navigate("/admin-dashboard");
       } else {
         toast.error(data.error || "Access Denied");

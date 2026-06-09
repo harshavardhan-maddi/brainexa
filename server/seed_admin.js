@@ -3,15 +3,15 @@ import bcrypt from 'bcryptjs';
 
 async function seedAdmin() {
   const email = 'admin@brainexa.com';
-  const password = 'admin123';
+  const password = 'Brainexa@admin';
   const name = 'System Administrator';
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
-    
+
     // Check if exists
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    
+
     if (existing.rows.length > 0) {
       await pool.query(
         'UPDATE users SET password = $1, role = $2, name = $3 WHERE email = $4',
@@ -25,12 +25,12 @@ async function seedAdmin() {
       );
       console.log('✅ Admin user created');
     }
-    
+
     console.log('\n--- Admin Credentials ---');
     console.log(`Email: ${email}`);
     console.log(`Password: ${password}`);
     console.log('-------------------------\n');
-    
+
     process.exit(0);
   } catch (err) {
     console.error('❌ Seeding failed:', err);

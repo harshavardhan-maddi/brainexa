@@ -30,31 +30,53 @@ export default function Login() {
     if (!email || !password) { setError("Please fill in all fields."); return; }
     setLoading(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) throw authError;
+      let userObj: any = null;
+      let userData: any = null;
 
-      const userId = authData.user?.id;
-      // Fetch student profile from our students table
-      const { data: profile } = await supabase.from("students").select("*").eq("id", userId).single();
+      try {
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+        if (authError) throw authError;
 
-      const user = {
-        id: userId!,
-        name: profile?.name || authData.user?.email?.split("@")[0] || "Student",
-        email: authData.user!.email!,
-        phone: profile?.phone || "",
-        plan: (profile?.plan as "free" | "premium") || "free",
-        createdAt: profile?.created_at || new Date().toISOString(),
-        profilePicture: profile?.profile_picture || "",
-        studyStartDate: profile?.study_start_date,
-        studyEndDate: profile?.study_end_date,
-        syllabusUpdateCount: profile?.syllabus_update_count || 0,
-        syllabusUpdateAllowance: profile?.syllabus_update_allowance || 5,
-        rulesAccepted: profile?.rules_accepted || false,
-      };
+        const userId = authData.user?.id;
+        const { data: profile } = await supabase.from("students").select("*").eq("id", userId).single();
 
-      await login(user);
+        userObj = {
+          id: userId!,
+          name: profile?.name || authData.user?.email?.split("@")[0] || "Student",
+          email: authData.user!.email!,
+          phone: profile?.phone || "",
+          plan: (profile?.plan as "free" | "premium") || "free",
+          createdAt: profile?.created_at || new Date().toISOString(),
+          profilePicture: profile?.profile_picture || "",
+          studyStartDate: profile?.study_start_date,
+          studyEndDate: profile?.study_end_date,
+          syllabusUpdateCount: profile?.syllabus_update_count || 0,
+          syllabusUpdateAllowance: profile?.syllabus_update_allowance || 5,
+          rulesAccepted: profile?.rules_accepted || false,
+        };
+      } catch (supabaseErr) {
+        console.warn("Supabase Auth failed, trying local DB fallback:", supabaseErr);
+        
+        const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
+        });
+
+        const localRes = await response.json();
+        if (!localRes.success) {
+          throw new Error(localRes.error || "Invalid email or password.");
+        }
+
+        userObj = localRes.user;
+        userData = localRes.data;
+        
+        localStorage.setItem("localStudentUser", JSON.stringify({ user: userObj, data: userData }));
+      }
+
+      await login(userObj, userData);
       toast.success("Welcome back!");
-      navigate(user.plan === "free" ? "/subscription" : "/home");
+      navigate(userObj.plan === "free" ? "/subscription" : "/home");
     } catch (err: any) {
       setError(err.message || "Invalid email or password.");
     } finally {

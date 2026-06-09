@@ -1,9 +1,10 @@
 import { useState, useEffect } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { BookOpen, Lock, ArrowLeft, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import { API_BASE_URL } from "@/lib/api-config";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -13,8 +14,16 @@ export default function ResetPassword() {
   const [completed, setCompleted] = useState(false);
   const [isRecoverySession, setIsRecoverySession] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token");
+  const email = searchParams.get("email");
 
   useEffect(() => {
+    if (token && email) {
+      setIsRecoverySession(true);
+      return;
+    }
+
     // Listen for PASSWORD_RECOVERY event
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" || session) {
@@ -42,7 +51,7 @@ export default function ResetPassword() {
       subscription.unsubscribe();
       clearTimeout(timer);
     };
-  }, []);
+  }, [token, email]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,19 +66,34 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
-
-      if (error) {
-        toast.error(error.message || "Failed to reset password.");
-      } else {
+      if (token && email) {
+        const response = await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, token, password })
+        });
+        
+        const localRes = await response.json();
+        if (!localRes.success) {
+          throw new Error(localRes.error || "Failed to reset password.");
+        }
+        
         setCompleted(true);
         toast.success("Password updated successfully!");
-        // Log out user so they have to sign in with their new password
-        await supabase.auth.signOut();
+      } else {
+        const { error } = await supabase.auth.updateUser({ password });
+
+        if (error) {
+          toast.error(error.message || "Failed to reset password.");
+        } else {
+          setCompleted(true);
+          toast.success("Password updated successfully!");
+          await supabase.auth.signOut();
+        }
       }
     } catch (err: any) {
       console.error("Reset password error:", err);
-      toast.error("Connection error. Please try again.");
+      toast.error(err.message || "Connection error. Please try again.");
     } finally {
       setLoading(false);
     }

@@ -16,6 +16,8 @@ const initDB = async () => {
         profile_picture TEXT,
         reset_token TEXT,
         token_expiry TIMESTAMP,
+        institute TEXT,
+        added_by UUID REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);

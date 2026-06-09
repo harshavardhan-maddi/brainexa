@@ -52,13 +52,26 @@ function SubscribedRoute({ children }: { children: React.ReactNode }) {
 
 // Component to handle socket connection
 function SocketProvider({ children }: { children: React.ReactNode }) {
-  const { user, login } = useStore();
+  const { user, login, fetchUserData } = useStore();
 
-  // Listen for Supabase auth changes (handles Google OAuth redirect + page refresh)
   useEffect(() => {
+    // Restore local student session on mount
+    const savedLocalUser = localStorage.getItem("localStudentUser");
+    if (savedLocalUser && !user) {
+      try {
+        const { user: savedUser, data: savedData } = JSON.parse(savedLocalUser);
+        login(savedUser, savedData);
+        fetchUserData(savedUser.id);
+      } catch (e) {
+        console.error("Failed to restore local user session", e);
+      }
+    }
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      // If we have a local session active, do not allow Supabase session to override it
+      if (localStorage.getItem("localStudentUser")) return;
+
       if (session?.user && !user) {
-        // Fetch student profile from DB
         const { data: profile } = await supabase
           .from("students")
           .select("*")
@@ -82,7 +95,7 @@ function SocketProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [user, login, fetchUserData]);
 
   useEffect(() => {
     if (user) {
