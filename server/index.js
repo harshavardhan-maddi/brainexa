@@ -185,13 +185,12 @@ async function sendWelcomeEmail(email, name, password, institute) {
   }
 }
 
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
+import { exec } from 'child_process';
 
 dotenv.config();
 
 // Initialize Database
-await initDB();
+initDB();
 
 const app = express();
 app.use(cors());
@@ -2885,7 +2884,6 @@ if (!process.env.VERCEL) {
   // FastAPI server entry point
   const pyPort = process.env.PY_PORT || '8001';
   const pyHost = process.env.PY_HOST || '127.0.0.1';
-  const { exec } = require('child_process');
   // Start FastAPI with uvicorn using env variables
   const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
   console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
