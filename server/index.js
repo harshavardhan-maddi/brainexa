@@ -249,11 +249,15 @@ const profileUpload = multer({
 app.use(express.static('public'));
 app.use('/images', express.static('public/images'));
 
-// Create folders if they don't exist
+// Create folders if they don't exist (handle read-only filesystem on Vercel gracefully)
 (async () => {
-  await fs.mkdir('uploads', { recursive: true });
-  await fs.mkdir(path.join('public', 'images', 'ai-generated'), { recursive: true });
-  await fs.mkdir(path.join('public', 'images', 'profiles'), { recursive: true });
+  try {
+    await fs.mkdir('uploads', { recursive: true });
+    await fs.mkdir(path.join('public', 'images', 'ai-generated'), { recursive: true });
+    await fs.mkdir(path.join('public', 'images', 'profiles'), { recursive: true });
+  } catch (err) {
+    console.warn('⚠️ Startup directory creation skipped/failed:', err.message);
+  }
 })();
 
 // Users store
@@ -2800,63 +2804,65 @@ app.post('/api/reports/fetch', async (req, res) => {
   }
 });
 
-// Schedule everyday at 11:59 PM
-cron.schedule('59 23 * * *', async () => {
-  console.log('📬 Running daily report email job...');
-  try {
-    const premiumUsers = await pool.query("SELECT id, name, email FROM users WHERE plan = 'premium'");
-    const today = new Date().toISOString().split('T')[0];
+if (!process.env.VERCEL) {
+  // Schedule everyday at 11:59 PM
+  cron.schedule('59 23 * * *', async () => {
+    console.log('📬 Running daily report email job...');
+    try {
+      const premiumUsers = await pool.query("SELECT id, name, email FROM users WHERE plan = 'premium'");
+      const today = new Date().toISOString().split('T')[0];
 
-    for (const user of premiumUsers.rows) {
-      const activities = await pool.query(
-        'SELECT * FROM activity_logs WHERE user_id = $1 AND created_at >= $2',
-        [user.id, `${today} 00:00:00`]
-      );
+      for (const user of premiumUsers.rows) {
+        const activities = await pool.query(
+          'SELECT * FROM activity_logs WHERE user_id = $1 AND created_at >= $2',
+          [user.id, `${today} 00:00:00`]
+        );
 
-      if (activities.rows.length === 0) continue;
+        if (activities.rows.length === 0) continue;
 
-      let reportText = `Hello ${user.name},\n\nHere is your Brainexa Daily Performance Report for ${today}:\n\n`;
+        let reportText = `Hello ${user.name},\n\nHere is your Brainexa Daily Performance Report for ${today}:\n\n`;
 
-      const tasks = activities.rows.filter(a => a.type === 'task_completion');
-      const quizzes = activities.rows.filter(a => a.type === 'quiz_attempt');
-      const updates = activities.rows.filter(a => a.type === 'syllabus_update');
+        const tasks = activities.rows.filter(a => a.type === 'task_completion');
+        const quizzes = activities.rows.filter(a => a.type === 'quiz_attempt');
+        const updates = activities.rows.filter(a => a.type === 'syllabus_update');
 
-      if (tasks.length > 0) {
-        reportText += `✅ Tasks Completed:\n`;
-        tasks.forEach(t => reportText += `- ${t.description} in ${t.subject}\n`);
-        reportText += `\n`;
+        if (tasks.length > 0) {
+          reportText += `✅ Tasks Completed:\n`;
+          tasks.forEach(t => reportText += `- ${t.description} in ${t.subject}\n`);
+          reportText += `\n`;
+        }
+
+        if (quizzes.length > 0) {
+          reportText += `📝 Quizzes Attempted:\n`;
+          quizzes.forEach(q => reportText += `- ${q.subject}: Scored ${q.score}/${q.total} in ${q.description}\n`);
+          reportText += `\n`;
+        }
+
+        if (updates.length > 0) {
+          reportText += `🔄 Syllabus Updates:\n`;
+          updates.forEach(u => reportText += `- ${u.description}\n`);
+          reportText += `\n`;
+        }
+
+        reportText += `Keep up the great work!\nBest regards,\nBrainexa Team`;
+
+        const mailOptions = {
+          from: `"Brainexa Support" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: `Brainexa Daily Report - ${today}`,
+          text: reportText
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) console.error(`Error sending email to ${user.email}:`, error);
+          else console.log(`Email sent to ${user.email}: ${info.response}`);
+        });
       }
-
-      if (quizzes.length > 0) {
-        reportText += `📝 Quizzes Attempted:\n`;
-        quizzes.forEach(q => reportText += `- ${q.subject}: Scored ${q.score}/${q.total} in ${q.description}\n`);
-        reportText += `\n`;
-      }
-
-      if (updates.length > 0) {
-        reportText += `🔄 Syllabus Updates:\n`;
-        updates.forEach(u => reportText += `- ${u.description}\n`);
-        reportText += `\n`;
-      }
-
-      reportText += `Keep up the great work!\nBest regards,\nBrainexa Team`;
-
-      const mailOptions = {
-        from: `"Brainexa Support" <${process.env.EMAIL_USER}>`,
-        to: user.email,
-        subject: `Brainexa Daily Report - ${today}`,
-        text: reportText
-      };
-
-      transporter.sendMail(mailOptions, (error, info) => {
-        if (error) console.error(`Error sending email to ${user.email}:`, error);
-        else console.log(`Email sent to ${user.email}: ${info.response}`);
-      });
+    } catch (err) {
+      console.error('Email job failed:', err);
     }
-  } catch (err) {
-    console.error('Email job failed:', err);
-  }
-});
+  });
+}
 
 const PORT = process.env.PORT || 3001;
 
