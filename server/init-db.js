@@ -18,6 +18,11 @@ const initDB = async () => {
         token_expiry TIMESTAMP,
         institute TEXT,
         added_by UUID REFERENCES users(id) ON DELETE SET NULL,
+        syllabus_update_allowance INTEGER DEFAULT 5,
+        rules_accepted BOOLEAN DEFAULT FALSE,
+        study_start_date TEXT,
+        study_end_date TEXT,
+        syllabus_update_count INTEGER DEFAULT 0,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -52,6 +57,7 @@ const initDB = async () => {
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
         day INTEGER NOT NULL,
         tasks JSONB NOT NULL,
+        date TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
@@ -182,15 +188,78 @@ const initDB = async () => {
       CREATE TABLE IF NOT EXISTS activity_logs (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-        action TEXT NOT NULL,
+        action TEXT,
         metadata JSONB,
+        type TEXT,
+        subject TEXT,
+        description TEXT,
+        score INTEGER,
+        total INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
-    console.log('✅ Database tables initialized successfully');
+    // Run database migrations/alterations to support all feature updates on existing tables
+    console.log('⚙️ Running database migrations...');
+    
+    // 1. Alter Users
+    await pool.query(`
+      ALTER TABLE users 
+      ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'student',
+      ADD COLUMN IF NOT EXISTS is_blocked BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT 'free',
+      ADD COLUMN IF NOT EXISTS reset_token TEXT,
+      ADD COLUMN IF NOT EXISTS token_expiry TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS institute TEXT,
+      ADD COLUMN IF NOT EXISTS added_by UUID REFERENCES users(id) ON DELETE SET NULL,
+      ADD COLUMN IF NOT EXISTS syllabus_update_allowance INTEGER DEFAULT 5,
+      ADD COLUMN IF NOT EXISTS rules_accepted BOOLEAN DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS study_start_date TEXT,
+      ADD COLUMN IF NOT EXISTS study_end_date TEXT,
+      ADD COLUMN IF NOT EXISTS syllabus_update_count INTEGER DEFAULT 0;
+    `);
+    console.log('✅ Users table migrations verified');
+
+    // 2. Alter Study Plans
+    await pool.query(`
+      ALTER TABLE study_plans 
+      ADD COLUMN IF NOT EXISTS date TEXT;
+    `);
+    console.log('✅ Study plans table migrations verified');
+
+    // 3. Alter Knowledge Logs
+    await pool.query(`
+      ALTER TABLE knowledge_logs 
+      ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
+    `);
+    console.log('✅ Knowledge logs table migrations verified');
+
+    // 4. Alter Activity Logs
+    await pool.query(`
+      ALTER TABLE activity_logs 
+      ADD COLUMN IF NOT EXISTS type TEXT,
+      ADD COLUMN IF NOT EXISTS subject TEXT,
+      ADD COLUMN IF NOT EXISTS description TEXT,
+      ADD COLUMN IF NOT EXISTS score INTEGER,
+      ADD COLUMN IF NOT EXISTS total INTEGER,
+      ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS action TEXT,
+      ADD COLUMN IF NOT EXISTS metadata JSONB,
+      ADD COLUMN IF NOT EXISTS timestamp TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+    `);
+
+    // Ensure nullable activity log columns
+    await pool.query(`
+      ALTER TABLE activity_logs 
+      ALTER COLUMN type DROP NOT NULL,
+      ALTER COLUMN action DROP NOT NULL;
+    `);
+    console.log('✅ Activity logs table migrations verified');
+
+    console.log('✅ Database tables initialized and migrated successfully');
   } catch (error) {
-    console.error('❌ Error initializing database:', error);
+    console.error('❌ Error initializing database/migrations:', error);
     // Note: Don't exit process here if we want the server to try to run anyway
   }
 };

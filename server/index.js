@@ -191,7 +191,7 @@ const require = createRequire(import.meta.url);
 dotenv.config();
 
 // Initialize Database
-initDB();
+await initDB();
 
 const app = express();
 app.use(cors());
