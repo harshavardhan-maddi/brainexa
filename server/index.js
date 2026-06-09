@@ -212,7 +212,7 @@ const io = new Server(httpServer, {
 
 // Multer for TXT/DOC/DOCX/PDF
 const storage = multer.diskStorage({
-  destination: 'uploads/',
+  destination: process.env.VERCEL ? '/tmp' : 'uploads/',
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
 const upload = multer({
@@ -228,7 +228,7 @@ const upload = multer({
 
 // Multer for Profile Pictures
 const profileStorage = multer.diskStorage({
-  destination: 'public/images/profiles/',
+  destination: process.env.VERCEL ? '/tmp' : 'public/images/profiles/',
   filename: (req, file, cb) => cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`)
 });
 const profileUpload = multer({
@@ -249,15 +249,17 @@ app.use(express.static('public'));
 app.use('/images', express.static('public/images'));
 
 // Create folders if they don't exist (handle read-only filesystem on Vercel gracefully)
-(async () => {
-  try {
-    await fs.mkdir('uploads', { recursive: true });
-    await fs.mkdir(path.join('public', 'images', 'ai-generated'), { recursive: true });
-    await fs.mkdir(path.join('public', 'images', 'profiles'), { recursive: true });
-  } catch (err) {
-    console.warn('⚠️ Startup directory creation skipped/failed:', err.message);
-  }
-})();
+if (!process.env.VERCEL) {
+  (async () => {
+    try {
+      await fs.mkdir('uploads', { recursive: true });
+      await fs.mkdir(path.join('public', 'images', 'ai-generated'), { recursive: true });
+      await fs.mkdir(path.join('public', 'images', 'profiles'), { recursive: true });
+    } catch (err) {
+      console.warn('⚠️ Startup directory creation skipped/failed:', err.message);
+    }
+  })();
+}
 
 // Users store
 const connectedUsers = new Map();
