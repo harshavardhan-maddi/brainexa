@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { API_BASE_URL } from "./api-config";
 import { getBrainexaData, setBrainexaData } from "./supabaseStorage";
+import { supabase } from "./supabase";
 
 
 export interface User {
@@ -187,6 +188,11 @@ export function useStore() {
       } catch (e) {
         console.error("Failed to log logout activity", e);
       }
+    }
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error("Failed to sign out from Supabase Auth", e);
     }
     state = defaultData;
     notify();

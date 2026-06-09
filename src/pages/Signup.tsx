@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
 import { Mail, Lock, User, Phone, Eye, EyeOff, ShieldCheck, Loader2 } from "lucide-react";
