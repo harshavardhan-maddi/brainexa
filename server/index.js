@@ -1308,7 +1308,7 @@ app.post('/api/admin/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Admin Login Error:', error);
-    res.status(500).json({ success: false, error: 'Server error' });
+    res.status(500).json({ success: false, error: `Server error: ${error.message}` });
   }
 });
 
