@@ -1,6 +1,19 @@
 import pool from './db.js';
 import bcrypt from 'bcryptjs';
 
+export let dbInitError = null;
+export let dbInitLogs = [];
+
+const log = (msg) => {
+  console.log(msg);
+  dbInitLogs.push({ time: new Date().toISOString(), message: msg });
+};
+
+const logError = (msg, err) => {
+  console.error(msg, err);
+  dbInitLogs.push({ time: new Date().toISOString(), message: `${msg} ${err.message || err}`, isError: true });
+};
+
 const initDB = async () => {
   try {
     // Users table
@@ -202,7 +215,7 @@ const initDB = async () => {
     `);
 
     // Run database migrations/alterations to support all feature updates on existing tables
-    console.log('⚙️ Running database migrations...');
+    log('⚙️ Running database migrations...');
     
     // 1. Alter Users
     await pool.query(`
@@ -220,21 +233,21 @@ const initDB = async () => {
       ADD COLUMN IF NOT EXISTS study_end_date TEXT,
       ADD COLUMN IF NOT EXISTS syllabus_update_count INTEGER DEFAULT 0;
     `);
-    console.log('✅ Users table migrations verified');
+    log('✅ Users table migrations verified');
 
     // 2. Alter Study Plans
     await pool.query(`
       ALTER TABLE study_plans 
       ADD COLUMN IF NOT EXISTS date TEXT;
     `);
-    console.log('✅ Study plans table migrations verified');
+    log('✅ Study plans table migrations verified');
 
     // 3. Alter Knowledge Logs
     await pool.query(`
       ALTER TABLE knowledge_logs 
       ADD COLUMN IF NOT EXISTS opened_at TIMESTAMP WITH TIME ZONE;
     `);
-    console.log('✅ Knowledge logs table migrations verified');
+    log('✅ Knowledge logs table migrations verified');
 
     // 4. Alter Activity Logs
     await pool.query(`
@@ -256,10 +269,10 @@ const initDB = async () => {
       ALTER COLUMN type DROP NOT NULL,
       ALTER COLUMN action DROP NOT NULL;
     `);
-    console.log('✅ Activity logs table migrations verified');
+    log('✅ Activity logs table migrations verified');
 
     // 5. Seed default admin if needed or update their password/role
-    console.log('👤 Seeding default admin...');
+    log('👤 Seeding default admin...');
     const adminEmail = 'admin@brainexa.com';
     const adminPassword = 'Brainexa@admin';
     const adminName = 'System Administrator';
@@ -270,18 +283,19 @@ const initDB = async () => {
         'UPDATE users SET password = $1, role = $2, name = $3 WHERE email = $4',
         [hashedAdminPassword, 'admin', adminName, adminEmail]
       );
-      console.log('✅ Admin user updated in database');
+      log('✅ Admin user updated in database');
     } else {
       await pool.query(
         'INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4)',
         [adminName, adminEmail, hashedAdminPassword, 'admin']
       );
-      console.log('✅ Admin user created in database');
+      log('✅ Admin user created in database');
     }
 
-    console.log('✅ Database tables initialized and migrated successfully');
+    log('✅ Database tables initialized and migrated successfully');
   } catch (error) {
-    console.error('❌ Error initializing database/migrations:', error);
+    dbInitError = error;
+    logError('❌ Error initializing database/migrations:', error);
     // Note: Don't exit process here if we want the server to try to run anyway
   }
 };

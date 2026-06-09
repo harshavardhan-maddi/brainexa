@@ -9,7 +9,7 @@ import fs from 'fs/promises';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import pool from './db.js';
-import initDB from './init-db.js';
+import initDB, { dbInitError, dbInitLogs } from './init-db.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
@@ -1304,6 +1304,35 @@ app.post('/api/admin/login', async (req, res) => {
   } catch (error) {
     console.error('Admin Login Error:', error);
     res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+app.get('/api/debug-db-status', async (req, res) => {
+  try {
+    const columnsRes = await pool.query(
+      "SELECT column_name, data_type FROM information_schema.columns WHERE table_name = 'users'"
+    );
+    const columns = columnsRes.rows;
+
+    const adminsRes = await pool.query(
+      "SELECT id, name, email, role, password IS NOT NULL as has_password, institute FROM users WHERE role = 'admin' OR email = 'admin@brainexa.com'"
+    );
+    const admins = adminsRes.rows;
+
+    res.json({
+      success: true,
+      dbInitError: dbInitError ? dbInitError.message || dbInitError : null,
+      dbInitLogs,
+      columns: columns.map(c => `${c.column_name} (${c.data_type})`),
+      admins
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      error: err.message,
+      dbInitError: dbInitError ? dbInitError.message || dbInitError : null,
+      dbInitLogs
+    });
   }
 });
 
