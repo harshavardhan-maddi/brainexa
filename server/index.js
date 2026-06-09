@@ -55,7 +55,7 @@ async function sendTaskCompletionEmail(userId, subject, topic) {
         )
         ORDER BY day ASC LIMIT 1
       `, [userId, `%${topic}%`]);
-      
+
       if (planRes.rows.length > 0) {
         const tasks = typeof planRes.rows[0].tasks === 'string' ? JSON.parse(planRes.rows[0].tasks) : planRes.rows[0].tasks;
         nextTask = tasks[0]?.topic || nextTask;
@@ -63,7 +63,7 @@ async function sendTaskCompletionEmail(userId, subject, topic) {
     } catch (planErr) {
       console.warn("⚠️ Admin: Could not fetch next task for email motivation:", planErr.message);
     }
-    
+
     const motivations = [
       "Every small step brings you closer to your grand goal!",
       "Consistency is the bridge between goals and accomplishment.",
@@ -216,21 +216,23 @@ const storage = multer.diskStorage({
   destination: 'uploads/',
   filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
 });
-const upload = multer({ storage, fileFilter: (req, file, cb) => {
-  const allowedExts = ['.txt', '.docx', '.doc', '.pdf'];
-  if (allowedExts.includes(path.extname(file.originalname).toLowerCase())) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only TXT, DOCX, DOC, and PDF supported'));
+const upload = multer({
+  storage, fileFilter: (req, file, cb) => {
+    const allowedExts = ['.txt', '.docx', '.doc', '.pdf'];
+    if (allowedExts.includes(path.extname(file.originalname).toLowerCase())) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only TXT, DOCX, DOC, and PDF supported'));
+    }
   }
-}});
+});
 
 // Multer for Profile Pictures
 const profileStorage = multer.diskStorage({
   destination: 'public/images/profiles/',
   filename: (req, file, cb) => cb(null, `profile-${Date.now()}${path.extname(file.originalname)}`)
 });
-const profileUpload = multer({ 
+const profileUpload = multer({
   storage: profileStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
@@ -304,7 +306,7 @@ const isAdminOrSubAdmin = async (req, res, next) => {
 async function identifyTopicFromQuery(query, subjects) {
   if (!subjects || subjects.length === 0) return null;
 
-  const syllabusText = subjects.map(s => 
+  const syllabusText = subjects.map(s =>
     `${s.name}: ${s.topics.map(t => t.topic).join(', ')}`
   ).join('\n');
 
@@ -362,10 +364,10 @@ async function generateHuggingFaceImage(prompt) {
     const fileName = `ai-${Date.now()}-${Math.floor(Math.random() * 1000)}.png`;
     const folderPath = path.join('public', 'images', 'ai-generated');
     const filePath = path.join(folderPath, fileName);
-    
+
     await fs.mkdir(folderPath, { recursive: true });
     await fs.writeFile(filePath, buffer);
-    
+
     // Return full backend URL for absolute reliability
     const host = process.env.VITE_BACKEND_URL || 'http://localhost:3001';
     return `${host}/images/ai-generated/${fileName}`;
@@ -384,15 +386,15 @@ async function checkTopicAccess(userId, subjectName, topicName, studentSubjects,
   // Check all PREVIOUS topics in this subject
   for (let i = 0; i < topicIndex; i++) {
     const prevTopic = subject.topics[i];
-    
+
     // A topic is "completed" if it has a quiz result or questions attempted
-    const isCompleted = 
+    const isCompleted =
       (quizResults && quizResults.some(r => r.subject === subjectName && r.topic === prevTopic.topic && r.score > 0)) ||
       (prevTopic.questionsAttempted > 0);
 
     if (!isCompleted) {
-      return { 
-        allowed: false, 
+      return {
+        allowed: false,
         reason: `⚠️ **Access Restricted!** 
 
 You haven't completed the prerequisite topic yet. To unlock **${topicName}**, you need to finish:
@@ -412,7 +414,7 @@ Complete the previous topic first to build a strong foundation! 💪`,
 // Detect language from user message
 function detectLanguage(message) {
   const lowerMessage = message.toLowerCase();
-  
+
   // Indian languages detection
   if (lowerMessage.includes('नमस्ते') || lowerMessage.includes('क्या') || lowerMessage.includes('है') || lowerMessage.includes('का') || lowerMessage.includes('की') || lowerMessage.includes('के') || lowerMessage.includes('को') || lowerMessage.includes('से') || lowerMessage.includes('में') || lowerMessage.includes('पर')) {
     return 'Hindi';
@@ -444,7 +446,7 @@ function detectLanguage(message) {
   if (lowerMessage.includes('বাংলা') || lowerMessage.includes('কি') || lowerMessage.includes('আছে') || lowerMessage.includes('করো') || lowerMessage.includes('এর') || lowerMessage.includes('তে') || lowerMessage.includes('কে') || lowerMessage.includes('র')) {
     return 'Bengali';
   }
-  
+
   // Default to English
   return 'English';
 }
@@ -457,10 +459,10 @@ function analyzeSlang(message) {
     'indian_slang': ['yaar', 'bhai', 'dude', 'bro', 'machan', 'anna', 'sir', 'boss', 'super', 'cool', 'awesome', 'mast', 'zabardast', 'bakwaas', 'faltu', 'timepass', 'ghar ka', 'local', 'desi', 'bhaiya', 'panditji', 'sirji', 'madam', 'memsaab', 'saab', 'jaaneman', 'jaan', 'pyaar', 'ishq', 'dil', 'jaaneman', 'jaan', 'pyaar', 'ishq', 'dil', 'sexy', 'hot', 'gorgeous', 'beautiful', 'cute', 'sweet', 'darling', 'baby', 'jaaneman'],
     'study_slang': ['grind', 'cram', 'pull all-nighter', 'burn midnight oil', 'hit the books', 'study session', 'brain dump', 'memory palace', 'mnemonics', 'rote learning', 'concept mapping', 'mind mapping', 'flash cards', 'practice tests', 'mock exams', 'revision', 'recap', 'summary', 'key points', 'important', 'must know', 'crucial', 'vital', 'essential']
   };
-  
+
   let slangLevel = 'formal';
   let detectedSlang = [];
-  
+
   for (const [level, words] of Object.entries(slangIndicators)) {
     for (const word of words) {
       if (lowerMessage.includes(word)) {
@@ -470,7 +472,7 @@ function analyzeSlang(message) {
       }
     }
   }
-  
+
   return { slangLevel, detectedSlang };
 }
 
@@ -478,7 +480,7 @@ function analyzeSlang(message) {
 async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
   const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROK_API_KEY || process.env.GROQ_API_KEY;
-  
+
   // Debug log to console (server side)
   if (!isSyllabus) {
     console.log('--- AI Activation Debug ---');
@@ -492,7 +494,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   // Detect language and slang from user message
   const detectedLanguage = detectLanguage(prompt);
   const slangAnalysis = analyzeSlang(prompt);
-  
+
   // Update context with detected language if not already set
   if (!context.detectedLanguage) {
     context.detectedLanguage = detectedLanguage;
@@ -504,13 +506,13 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   // Skip progress check if it's a syllabus parsing call or if context isn't available
   if (!isSyllabus && context.studentSubjects && context.studentSubjects.length > 0 && !context.skipAccessCheck) {
     const identified = await identifyTopicFromQuery(prompt, context.studentSubjects);
-    
+
     if (identified && identified.subject && identified.topic) {
       const access = await checkTopicAccess(
-        context.userId, 
-        identified.subject, 
-        identified.topic, 
-        context.studentSubjects, 
+        context.userId,
+        identified.subject,
+        identified.topic,
+        context.studentSubjects,
         context.quizResults
       );
 
@@ -589,7 +591,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
 
 শক্তিশালী ভিত্তি তৈরি করতে প্রথমে পূর্ববর্তী বিষয়টি সম্পূর্ণ করুন! 💪`
         };
-        
+
         return languageMessages[detectedLanguage] || access.reason;
       }
 
@@ -598,7 +600,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
         'SELECT content FROM knowledge_logs WHERE user_id = $1 AND topic_name = $2',
         [context.userId, identified.topic]
       );
-      
+
       if (topicData.rows.length > 0) {
         context.additionalContext = (context.additionalContext || "") + `\n\nPAST TOPIC STUDY DATA:\n${topicData.rows[0].content}`;
       }
@@ -629,7 +631,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   }
 
   let systemPrompt = '';
-  
+
   if (isSyllabus) {
     systemPrompt = `Return ONLY JSON with subjects/topics from syllabus:
 {
@@ -665,7 +667,7 @@ STUDENT CONTEXT:
 
     const basePrompt = languagePrompts[context.detectedLanguage] || languagePrompts['English'];
 
-    const retrievedText = context.retrievedKnowledge 
+    const retrievedText = context.retrievedKnowledge
       ? `\n\nREAL-TIME KNOWLEDGE (USE THIS FOR ABSOLUTE ACCURACY):\n${context.retrievedKnowledge}`
       : "";
 
@@ -752,15 +754,15 @@ STUDENT CONTEXT:
     } catch (error) {
       console.error('Groq error:', error.message);
     }
-  } 
-  
+  }
+
   if (USE_GEMINI) {
     try {
       const contents = history.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       }));
-      
+
       contents.push({
         role: 'user',
         parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
@@ -823,7 +825,7 @@ STUDENT CONTEXT:
       // Graceful fallback - AI key is invalid/quota exceeded; still help the student
       console.warn('⚠️  AI keys are configured but all providers failed. Falling back to offline mode.');
     }
-    
+
     // Smart offline responses based on context
     const greetings = {
       'English': `Hi ${context.userName || 'Student'}, your AI study mentor! 😊`,
@@ -838,18 +840,18 @@ STUDENT CONTEXT:
       'Punjabi': `ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ ${context.userName || 'Student'}, ਤੁਹਾਡਾ AI ਅਧਿਐਨ ਸਹਾਇਕ! 😊`,
       'Bengali': `হ্যালো ${context.userName || 'Student'}, আপনার AI অধ্যয়ন সহায়ক! 😊`
     };
-    
+
     const detectedLang = context.detectedLanguage || 'English';
     const greeting = greetings[detectedLang] || greetings['English'];
-    
+
     if (!prompt.trim()) return greeting;
-    
+
     const lowerPrompt = prompt.toLowerCase();
-    
+
     // Handle common educational topics even offline
-    if (lowerPrompt.includes('explain') || lowerPrompt.includes('what is') || lowerPrompt.includes('define') || 
-        (detectedLang !== 'English' && (lowerPrompt.includes('kya') || lowerPrompt.includes('em') || lowerPrompt.includes('enna') || lowerPrompt.includes('kay') || lowerPrompt.includes('ki') || lowerPrompt.includes('enta') || lowerPrompt.includes('en')))) {
-      
+    if (lowerPrompt.includes('explain') || lowerPrompt.includes('what is') || lowerPrompt.includes('define') ||
+      (detectedLang !== 'English' && (lowerPrompt.includes('kya') || lowerPrompt.includes('em') || lowerPrompt.includes('enna') || lowerPrompt.includes('kay') || lowerPrompt.includes('ki') || lowerPrompt.includes('enta') || lowerPrompt.includes('en')))) {
+
       const commonTopics = {
         'noun': {
           'English': `**Noun: A Person, Place, Thing, or Idea**
@@ -940,7 +942,7 @@ Would you like to learn about verb tenses or another grammar topic?`,
 क्या आप क्रिया कालों के बारे में जानना चाहेंगे या कोई अन्य व्याकरण विषय?`
         }
       };
-      
+
       // Check for common topics in the prompt
       for (const [topic, translations] of Object.entries(commonTopics)) {
         if (lowerPrompt.includes(topic)) {
@@ -948,18 +950,18 @@ Would you like to learn about verb tenses or another grammar topic?`,
         }
       }
     }
-    
+
     if (lowerPrompt.includes('hello') || lowerPrompt.includes('hi') || lowerPrompt.includes('नमस्ते') || lowerPrompt.includes('హలో') || lowerPrompt.includes('வணக்கம்') || lowerPrompt.includes('नमस्कार')) {
       return greeting + `\n\nYour progress: ${context.studyProgress || 0}%\nSubjects: ${context.studentSubjects?.map(s => s.name).join(', ') || 'None yet'}\n\nWhat would you like to study today?`;
     }
-    
+
     const topics = context.studentSubjects?.flatMap(s => s.topics.map(t => t.topic.toLowerCase())) || [];
     const matchingTopic = topics.find(t => lowerPrompt.includes(t));
-    
+
     if (matchingTopic) {
       return `**${matchingTopic.toUpperCase()}**\n\nGreat choice! Here's a structured explanation:\n\n## Key Concepts\n- Core definition and principles\n- Real-world applications\n\n## Examples\n1. Basic example\n2. Advanced case\n\n## Practice\nTry this problem: *simple practice question*\n\nYour quiz score on similar topics: ${context.quizResults?.filter(r => r.topic.toLowerCase().includes(matchingTopic))?.[0]?.score || 'Not attempted yet'}\n\nWhat specific part would you like to dive deeper into?`;
     }
-    
+
     const genericResponses = {
       'English': `${greeting}\n\nI can help with:\n• Explain concepts from your syllabus\n• Solve practice problems\n• Review quiz weak areas (${context.weakTopics?.join(', ') || 'None'})\n• Generate study plans\n\n**What's your question?** 📚`,
       'Hindi': `${greeting}\n\nमैं आपकी मदद कर सकता हूं:\n• आपके पाठ्यक्रम से अवधारणाओं की व्याख्या\n• अभ्यास प्रश्नों को हल करना\n• क्विज कमजोर क्षेत्रों की समीक्षा (${context.weakTopics?.join(', ') || 'कोई नहीं'})\n• अध्ययन योजनाएं तैयार करना\n\n**आपका प्रश्न क्या है?** 📚`,
@@ -973,7 +975,7 @@ Would you like to learn about verb tenses or another grammar topic?`,
       'Punjabi': `${greeting}\n\nਮੈਂ ਤੁਹਾਨੂੰ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ:\n• ਤੁਹਾਡੇ ਨਸ਼ਰ ਤੋਂ ਸੰਕਲਪਣਾ ਦੀ ਵਿਆਖਿਆ\n• ਅਭਿਆਸ ਸਵਾਲ ਹੱਲ ਕਰਨਾ\n• ਕਵਿਜ਼ ਕਮਜ਼ੋਰ ਖੇਤਰਾਂ ਦੀ ਸਮੀਖਿਆ (${context.weakTopics?.join(', ') || 'ਕੋਈ ਨਹੀਂ'})\n• ਅਧਿਐਨ ਯੋਜਨਾਵਾਂ ਤਿਆਰ ਕਰਨਾ\n\n**ਤੁਹਾਡਾ ਸਵਾਲ ਕੀ ਹੈ?** 📚`,
       'Bengali': `${greeting}\n\nআমি আপনাকে সাহায্য করতে পারি:\n• আপনার পাঠ্যক্রম থেকে ধারণা ব্যাখ্যা করা\n• অনুশীলন প্রশ্ন সমাধান করা\n• কুইজ দুর্বল ক্ষেত্র পর্যালোচনা (${context.weakTopics?.join(', ') || 'কোনটি নেই'})\n• অধ্যয়ন পরিকল্পনা তৈরি করা\n\n**আপনার প্রশ্ন কী?** 📚`
     };
-    
+
     return genericResponses[detectedLang] || genericResponses['English'];
   }
 
@@ -982,7 +984,7 @@ Would you like to learn about verb tenses or another grammar topic?`,
     if (jsonMatch) {
       try {
         return JSON.parse(jsonMatch[0]);
-      } catch {}
+      } catch { }
     }
   }
 
@@ -999,7 +1001,7 @@ async function extractText(filePath) {
     const result = await mammoth.extractRawText({ buffer });
     return result.value;
   }
-  
+
   if (ext === '.pdf') {
     try {
       const formData = new FormData();
@@ -1037,7 +1039,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     // Store in DB
     await pool.query('DELETE FROM temp_otps WHERE email = $1', [email]);
     await pool.query('INSERT INTO temp_otps (email, otp) VALUES ($1, $2)', [email, otp]);
@@ -1092,7 +1094,7 @@ app.post('/api/auth/signup', async (req, res) => {
   } catch (error) {
     console.error('Signup Error:', error);
     if (error.code === '23505') {
-       return res.status(400).json({ success: false, error: 'User already registered' });
+      return res.status(400).json({ success: false, error: 'User already registered' });
     }
     res.status(500).json({ success: false, error: 'Database error during registration' });
   }
@@ -1432,7 +1434,7 @@ app.get('/api/admin/users', isAdminOrSubAdmin, async (req, res) => {
       FROM users u
       LEFT JOIN progress p ON u.id = p.user_id
     `;
-    
+
     let queryParams = [];
     if (req.adminUser.role === 'sub_admin') {
       query += ` WHERE (u.role = 'student' OR u.role IS NULL) AND u.institute = $1 `;
@@ -1440,9 +1442,9 @@ app.get('/api/admin/users', isAdminOrSubAdmin, async (req, res) => {
     } else {
       query += ` WHERE u.role != 'admin' AND u.role != 'sub_admin' OR u.role IS NULL `;
     }
-    
+
     query += ` ORDER BY u.created_at DESC `;
-    
+
     const result = await pool.query(query, queryParams);
 
     console.log(`📊 Found ${result.rows.length} potential students`);
@@ -1456,7 +1458,7 @@ app.get('/api/admin/users', isAdminOrSubAdmin, async (req, res) => {
     const users = result.rows.map(u => {
       const lastActive = u.last_active || u.created_at;
       const daysSinceActive = (new Date() - new Date(lastActive)) / (1000 * 60 * 60 * 24);
-      
+
       let status = 'Standard';
       if (daysSinceActive <= 2) status = 'Active';
       if (daysSinceActive >= 7) status = 'At Risk';
@@ -1495,7 +1497,7 @@ app.get('/api/admin/user/:id/report', isAdminOrSubAdmin, async (req, res) => {
       FROM progress 
       WHERE user_id = $1
     `, [id]);
-    
+
     const activities = await pool.query(`
       SELECT action, created_at as timestamp, metadata
       FROM activity_logs
@@ -1636,7 +1638,7 @@ app.post('/api/auth/google', async (req, res) => {
       if (!response.ok) return res.status(400).json({ success: false, error: 'Invalid token' });
       payload = await response.json();
     }
-    
+
     // UPSERT Google user
     const existing = await pool.query('SELECT * FROM users WHERE email = $1', [payload.email]);
     let user;
@@ -1695,7 +1697,7 @@ app.post('/api/save-study-plan', async (req, res) => {
     await pool.query('DELETE FROM study_plans WHERE user_id = $1', [userId]);
     for (const day of plan) {
       await pool.query(
-        'INSERT INTO study_plans (user_id, day, tasks, date) VALUES ($1, $2, $3, $4)', 
+        'INSERT INTO study_plans (user_id, day, tasks, date) VALUES ($1, $2, $3, $4)',
         [userId, day.day, JSON.stringify(day.tasks), day.date || null]
       );
     }
@@ -1751,10 +1753,10 @@ app.post('/api/log-task', async (req, res) => {
       'INSERT INTO activity_logs (user_id, action, type, subject, description) VALUES ($1, $2, $3, $4, $5)',
       [userId, 'task_completion', 'task', subject, `Completed ${topic}`]
     );
-    
+
     // Trigger congratulatory email asynchronously
     sendTaskCompletionEmail(userId, subject, topic);
-    
+
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -1813,11 +1815,11 @@ app.get('/api/payment/status/:paymentId', async (req, res) => {
 });
 
 app.post('/api/payment/verify', async (req, res) => {
-  const { 
-    userId, 
-    razorpay_order_id, 
-    razorpay_payment_id, 
-    razorpay_signature 
+  const {
+    userId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature
   } = req.body;
 
   if (!userId || !razorpay_payment_id) {
@@ -1843,7 +1845,7 @@ app.post('/api/payment/verify', async (req, res) => {
 
     // 2. Update User Plan to Premium
     await pool.query('UPDATE users SET plan = $1 WHERE id = $2', ['premium', userId]);
-    
+
     // 3. Log the Real Transaction
     await pool.query(
       'INSERT INTO payments (user_id, amount, method, transaction_id, status) VALUES ($1, $2, $3, $4, $5)',
@@ -1876,11 +1878,11 @@ app.post('/api/payment/create-syllabus-order', async (req, res) => {
 });
 
 app.post('/api/payment/verify-syllabus-update', async (req, res) => {
-  const { 
-    userId, 
-    razorpay_order_id, 
-    razorpay_payment_id, 
-    razorpay_signature 
+  const {
+    userId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature
   } = req.body;
 
   if (!userId || !razorpay_payment_id) {
@@ -1976,7 +1978,7 @@ app.post('/api/update-subjects', async (req, res) => {
 
     // Asynchronous AI generation (same as before)
     (async () => {
-       // ... existing AI logic (I restored it properly in the previous turn)
+      // ... existing AI logic (I restored it properly in the previous turn)
     })();
 
     res.json({ success: true, syllabusUpdateCount: newCount, syllabusUpdateAllowance: newAllowance });
@@ -2000,9 +2002,9 @@ app.post('/upload-syllabus', upload.single('syllabus'), async (req, res) => {
   try {
     const { userId } = req.body;
     if (!req.file) return res.status(400).json({ error: 'No file' });
-    
+
     const text = await extractText(req.file.path);
-    
+
     // If userId is provided, save to study materials for the book reader
     if (userId) {
       try {
@@ -2017,7 +2019,7 @@ app.post('/upload-syllabus', upload.single('syllabus'), async (req, res) => {
 
     // Clean up local file after DB save
     await fs.unlink(req.file.path);
-    
+
     const parsed = await callAI(text, true);
     res.json({ success: true, subjects: parsed.subjects || [] });
   } catch (error) {
@@ -2072,10 +2074,10 @@ app.post('/chat', async (req, res) => {
   try {
     const { message, userId, history, context } = req.body;
     let response = await callAI(message, false, history || [], context || {});
-    
+
     let imageUrl = null;
     const visualMatch = response.match(/\[VISUAL:\s*([^\]]+)\]/i);
-    
+
     if (visualMatch) {
       const visualPrompt = visualMatch[1].trim();
       imageUrl = await generateHuggingFaceImage(visualPrompt);
@@ -2119,7 +2121,7 @@ app.post('/api/search-and-answer', async (req, res) => {
     let finalAnswer = answer;
     let imageUrl = null;
     const visualMatch = finalAnswer.match(/\[VISUAL:\s*([^\]]+)\]/i);
-    
+
     if (visualMatch) {
       const visualPrompt = visualMatch[1].trim();
       imageUrl = await generateHuggingFaceImage(visualPrompt);
@@ -2192,12 +2194,12 @@ app.post('/api/tts', async (req, res) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         input: { text: text.substring(0, 5000) }, // Limit text length
-        voice: { 
+        voice: {
           languageCode: ttsLanguage.split('-')[0],
           name: `${ttsLanguage}-Standard-A`,
           ssmlGender: 'NEUTRAL'
         },
-        audioConfig: { 
+        audioConfig: {
           audioEncoding: 'MP3',
           speakingRate: 0.9,
           pitch: 0
@@ -2215,8 +2217,8 @@ app.post('/api/tts', async (req, res) => {
     const audioContent = data.audioContent;
 
     // Return base64 audio
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       audio: audioContent,
       language: ttsLanguage
     });
@@ -2330,7 +2332,7 @@ app.post('/api/upload-material', upload.single('file'), async (req, res) => {
       'INSERT INTO learning_materials (user_id, title, subject, type, format, content) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [userId, file.originalname, subject || 'Uploaded', 'uploaded', file.mimetype === 'application/pdf' ? 'pdf' : 'notes', content]
     );
-    
+
     res.json({ success: true, material: result.rows[0] });
   } catch (error) {
     console.error('Upload material error:', error);
@@ -2341,11 +2343,13 @@ app.post('/api/upload-material', upload.single('file'), async (req, res) => {
 app.get('/api/materials/:userId', async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM learning_materials WHERE user_id = $1 ORDER BY created_at DESC', [req.params.userId]);
-    res.json({ success: true, materials: result.rows.map(m => ({
-      ...m,
-      title: m.title,
-      createdAt: m.created_at
-    })) });
+    res.json({
+      success: true, materials: result.rows.map(m => ({
+        ...m,
+        title: m.title,
+        createdAt: m.created_at
+      }))
+    });
   } catch (error) {
     res.status(500).json({ error: 'Database error' });
   }
@@ -2365,7 +2369,7 @@ app.get('/api/material/:id', async (req, res) => {
 // Socket.io
 io.on('connection', (socket) => {
   console.log('🔌 New Socket Connection:', socket.id);
-  
+
   socket.on('join', (userData) => {
     console.log(`👤 User joined: ${userData?.name} on socket ${socket.id}`);
     connectedUsers.set(socket.id, userData);
@@ -2379,9 +2383,9 @@ io.on('connection', (socket) => {
       const { content, history, context, userId } = data;
       const aiContext = context || {};
       aiContext.userId = userId;
-      
+
       const response = await callAI(content, false, history || [], aiContext);
-      
+
       // Save user message to DB
       if (userId) {
         await pool.query('INSERT INTO chat_history (user_id, role, content) VALUES ($1, $2, $3)', [userId, 'user', content]);
@@ -2423,7 +2427,7 @@ app.post('/api/knowledge/search', async (req, res) => {
       body: JSON.stringify({ topic })
     });
     const data = await pyRes.json();
-    
+
     // Log search
     if (userId) {
       await pool.query(
@@ -2431,7 +2435,7 @@ app.post('/api/knowledge/search', async (req, res) => {
         [userId, topic, topic, JSON.stringify(data.results)]
       );
     }
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2447,7 +2451,7 @@ app.post('/api/knowledge/direct-answer', async (req, res) => {
       body: JSON.stringify({ topic })
     });
     const data = await pyRes.json();
-    
+
     // Log interaction
     if (userId && data.success) {
       await pool.query(
@@ -2455,7 +2459,7 @@ app.post('/api/knowledge/direct-answer', async (req, res) => {
         [userId, topic, topic, data.summary, JSON.stringify(data.sources)]
       );
     }
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2484,13 +2488,13 @@ app.get('/api/materials/history/:userId', async (req, res) => {
       'SELECT subject, topics, full_material, created_at as "createdAt" FROM material_history WHERE user_id = $1 ORDER BY created_at DESC LIMIT 10',
       [userId]
     );
-    res.json({ 
-      success: true, 
-      history: result.rows.map(r => ({ 
-        ...r, 
+    res.json({
+      success: true,
+      history: result.rows.map(r => ({
+        ...r,
         topics: typeof r.topics === 'string' ? JSON.parse(r.topics) : r.topics,
         full_material: typeof r.full_material === 'string' ? JSON.parse(r.full_material) : r.full_material
-      })) 
+      }))
     });
   } catch (error) {
     console.error('Fetch History Error:', error);
@@ -2507,7 +2511,7 @@ app.post('/api/knowledge/content', async (req, res) => {
       body: JSON.stringify({ url, topic })
     });
     const data = await pyRes.json();
-    
+
     // Update log with content
     if (userId && data.success) {
       await pool.query(
@@ -2515,7 +2519,7 @@ app.post('/api/knowledge/content', async (req, res) => {
         [data.summary, userId, topic]
       );
     }
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2531,7 +2535,7 @@ app.post('/api/knowledge/questions', async (req, res) => {
       body: JSON.stringify({ topic, explanation })
     });
     const data = await pyRes.json();
-    
+
     // Log learning session
     if (userId && data.success) {
       await pool.query(
@@ -2539,7 +2543,7 @@ app.post('/api/knowledge/questions', async (req, res) => {
         [userId, topic, explanation, JSON.stringify(data.questions)]
       );
     }
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2555,7 +2559,7 @@ app.post('/api/knowledge/evaluate', async (req, res) => {
       body: JSON.stringify({ question, answer, correct_info: correctInfo })
     });
     const data = await pyRes.json();
-    
+
     // Update progress
     if (userId && data.success) {
       const score = data.evaluation.score;
@@ -2574,7 +2578,7 @@ app.post('/api/knowledge/evaluate', async (req, res) => {
           updated_at = CURRENT_TIMESTAMP
       `, [userId, topic, score, status]);
     }
-    
+
     res.json(data);
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -2602,15 +2606,15 @@ app.put('/api/user/profile', profileUpload.single('profilePicture'), async (req,
     }
 
     await pool.query(query, params);
-    
+
     // Fetch updated user
     const userRes = await pool.query('SELECT name, profile_picture FROM users WHERE id = $1', [userId]);
-    res.json({ 
-      success: true, 
-      user: { 
-        name: userRes.rows[0].name, 
-        profilePicture: userRes.rows[0].profile_picture 
-      } 
+    res.json({
+      success: true,
+      user: {
+        name: userRes.rows[0].name,
+        profilePicture: userRes.rows[0].profile_picture
+      }
     });
   } catch (error) {
     console.error('Update Profile Error:', error);
@@ -2719,9 +2723,9 @@ app.post('/api/user/delete-account', async (req, res) => {
     // 1. Get user password
     const userRes = await pool.query('SELECT password FROM users WHERE id = $1', [userId]);
     if (userRes.rows.length === 0) return res.status(404).json({ success: false, error: 'User not found' });
-    
+
     const hashedPassword = userRes.rows[0].password;
-    
+
     // 2. Verify password if it exists
     if (hashedPassword) {
       const isMatch = await bcrypt.compare(password, hashedPassword);
@@ -2802,7 +2806,7 @@ cron.schedule('59 23 * * *', async () => {
   try {
     const premiumUsers = await pool.query("SELECT id, name, email FROM users WHERE plan = 'premium'");
     const today = new Date().toISOString().split('T')[0];
-    
+
     for (const user of premiumUsers.rows) {
       const activities = await pool.query(
         'SELECT * FROM activity_logs WHERE user_id = $1 AND created_at >= $2',
@@ -2812,7 +2816,7 @@ cron.schedule('59 23 * * *', async () => {
       if (activities.rows.length === 0) continue;
 
       let reportText = `Hello ${user.name},\n\nHere is your Brainexa Daily Performance Report for ${today}:\n\n`;
-      
+
       const tasks = activities.rows.filter(a => a.type === 'task_completion');
       const quizzes = activities.rows.filter(a => a.type === 'quiz_attempt');
       const updates = activities.rows.filter(a => a.type === 'syllabus_update');
@@ -2855,34 +2859,39 @@ cron.schedule('59 23 * * *', async () => {
 });
 
 const PORT = process.env.PORT || 3001;
-// Error handling for server startup
-httpServer.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`❌ Port ${PORT} is already in use. Please free the port or change the PORT in .env.`);
-  } else if (err.code === 'EACCES') {
-    console.error(`❌ Permission denied for port ${PORT}. Try running with elevated privileges or use a different port.`);
-  } else {
-    console.error('❌ Server error:', err);
-  }
-});
 
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n🚀 Brainexa Backend v2.0 - Running on 0.0.0.0:${PORT}\n`);
-});
+if (!process.env.VERCEL) {
+  // Error handling for server startup
+  httpServer.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${PORT} is already in use. Please free the port or change the PORT in .env.`);
+    } else if (err.code === 'EACCES') {
+      console.error(`❌ Permission denied for port ${PORT}. Try running with elevated privileges or use a different port.`);
+    } else {
+      console.error('❌ Server error:', err);
+    }
+  });
 
-// FastAPI server entry point
-const pyPort = process.env.PY_PORT || '8001';
-const pyHost = process.env.PY_HOST || '127.0.0.1';
-const { exec } = require('child_process');
-// Start FastAPI with uvicorn using env variables
-const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
-console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
-const child = exec(cmd, (error, stdout, stderr) => {
-  if (error) {
-    console.error(`FastAPI failed to start: ${error.message}`);
-  }
-  if (stderr) console.error(`FastAPI stderr: ${stderr}`);
-  if (stdout) console.log(`FastAPI stdout: ${stdout}`);
-});
+  httpServer.listen(PORT, '0.0.0.0', () => {
+    console.log(`\n🚀 Brainexa Backend v2.0 - Running on 0.0.0.0:${PORT}\n`);
+  });
+
+  // FastAPI server entry point
+  const pyPort = process.env.PY_PORT || '8001';
+  const pyHost = process.env.PY_HOST || '127.0.0.1';
+  const { exec } = require('child_process');
+  // Start FastAPI with uvicorn using env variables
+  const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
+  console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
+  const child = exec(cmd, (error, stdout, stderr) => {
+    if (error) {
+      console.error(`FastAPI failed to start: ${error.message}`);
+    }
+    if (stderr) console.error(`FastAPI stderr: ${stderr}`);
+    if (stdout) console.log(`FastAPI stdout: ${stdout}`);
+  });
+}
+
+export default app;
 
 
