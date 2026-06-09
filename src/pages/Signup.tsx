@@ -62,15 +62,37 @@ export default function Signup() {
     setLoading(true);
     try {
       // Sign up with Supabase – it sends a confirmation email automatically
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           data: { full_name: name, phone },
-          emailRedirectTo: undefined, // we handle OTP flow below
         },
       });
       if (error) throw error;
+
+      // If a session is returned immediately, "Confirm Email" is disabled in Supabase
+      if (data.session) {
+        const userId = data.user?.id!;
+        // Update student profile with name & phone
+        await supabase.from("students").update({ name, phone }).eq("id", userId);
+
+        await login({
+          id: userId,
+          name,
+          email,
+          phone,
+          plan: "free",
+          createdAt: new Date().toISOString(),
+          syllabusUpdateCount: 0,
+          syllabusUpdateAllowance: 5,
+          rulesAccepted: false,
+        });
+        toast.success("Account created successfully!");
+        navigate("/subscription");
+        return;
+      }
+
       toast.success("Verification code sent to your email!");
       setStep("otp");
     } catch (err: any) {
