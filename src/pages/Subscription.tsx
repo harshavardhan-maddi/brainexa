@@ -20,139 +20,30 @@ export default function Subscription() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [isAccepting, setIsAccepting] = useState(false);
-  const [isScriptLoaded, setIsScriptLoaded] = useState(false);
+  const [isScriptLoaded, setIsScriptLoaded] = useState(true);
   const [showUpiInput, setShowUpiInput] = useState(false);
   const [upiId, setUpiId] = useState("");
   const [showRulesOverlay, setShowRulesOverlay] = useState(false);
 
-  useEffect(() => {
-  const loadRazorpay = () => {
-    return new Promise<void>((resolve, reject) => {
-      if (typeof window !== 'undefined' && window.Razorpay) {
-        // SDK already loaded
-        window.__razorpayLoaded = true;
-        setIsScriptLoaded(true);
-        return resolve();
-      }
-      const script = document.createElement('script');
-      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-      script.async = true;
-      script.onload = () => {
-        window.__razorpayLoaded = true;
-        setIsScriptLoaded(true);
-        resolve();
-      };
-      script.onerror = () => {
-        window.__razorpayLoaded = false;
-        toast.error('Failed to load Razorpay SDK.');
-        reject(new Error('Razorpay SDK load error'));
-      };
-      document.body.appendChild(script);
-    });
+  const handleStandardPayment = async () => {
+    initiateRazorpay();
   };
-
-  // Attempt loading with up to 3 retries
-  const attemptLoad = async (retries = 3) => {
-    for (let i = 0; i < retries; i++) {
-      try {
-        await loadRazorpay();
-        return;
-      } catch (e) {
-        console.warn(`Razorpay SDK load attempt ${i + 1} failed.`);
-        await new Promise(res => setTimeout(res, 1000 * (i + 1)));
-      }
-    }
-    // Final failure
-    toast.error('Unable to load Razorpay SDK after multiple attempts.');
-  };
-
-  attemptLoad();
-}, []);
-
-const handleStandardPayment = async () => {
-  // Ensure Razorpay SDK is loaded before proceeding
-  if (typeof window !== 'undefined' && !window.__razorpayLoaded) {
-    toast.error('Razorpay SDK not loaded. Please try again later.');
-    return;
-  }
-  initiateRazorpay();
-};
 
   const initiateRazorpay = async (method?: string, vpa?: string) => {
     setIsLoading(true);
     try {
-      // 1. Create Order on Backend
-      const orderRes = await fetch(`${API_BASE_URL}/api/payment/create-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: 299 }),
-      });
-      const orderData = await orderRes.json();
-
-      if (!orderData.success) throw new Error(orderData.error);
-
-      // Ensure Razorpay key is available
-      if (!import.meta.env.VITE_RAZORPAY_KEY_ID) {
-        toast.error('Razorpay key is missing. Please configure VITE_RAZORPAY_KEY_ID.');
-        return;
-      }
-      console.log('🔑 Razorpay Key:', import.meta.env.VITE_RAZORPAY_KEY_ID);
-      const options: any = {
-        key: import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_SxuHrNPrYAMuRK",
-        amount: orderData.order.amount,
-        currency: "INR",
-        name: "Brainexa Premium",
-        description: "Unlimited AI Study Tools",
-        order_id: orderData.order.id,
-        handler: async (response: any) => {
-          // 3. Verify Payment on Backend
-          try {
-            const verifyRes = await fetch(`${API_BASE_URL}/api/payment/verify`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                userId: user?.id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              }),
-            });
-            const verifyData = await verifyRes.json();
-
-            if (verifyData.success) {
-              updatePlan("premium");
-              toast.success("Welcome to Brainexa Premium!");
-              setShowRulesOverlay(true);
-            } else {
-              toast.error("Payment verification failed.");
-            }
-          } catch (err) {
-            toast.error("Error communicating with server.");
-          }
-        },
-        prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-        },
-        theme: {
-          color: "#D946EF",
-        },
-      };
-
-      // IF specific UPI ID is provided, we tell Razorpay to skip its list and go straight to collecting
-      if (method === 'upi' && vpa) {
-        options.method = 'upi';
-        options.vpa = vpa;
-      }
-
-      const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function (response: any) {
-        toast.error(response.error.description);
-      });
-      rzp.open();
+      window.open("https://razorpay.me/@brainexa8423", "_blank");
+      toast.success("Opening Razorpay Payment Link... Please pay ₹299.");
+      
+      // Notify user about verification
+      setTimeout(() => {
+        toast.info("Once payment is completed, the admin will verify and activate your Premium account shortly.", {
+          duration: 8000,
+        });
+      }, 2000);
     } catch (err) {
       console.error(err);
-      toast.error("Failed to initiate payment.");
+      toast.error("Failed to open payment link.");
     } finally {
       setIsLoading(false);
     }
