@@ -303,19 +303,23 @@ OUTPUT ONLY THE QUERY STRING.
         active_gemini_key = gemini_key or self.gemini_api_key
         active_hf_key = hf_key or self.hf_api_key
 
-        # 1. Try Groq (Llama 3.3 70B) - Fastest and very capable
+        # 1. Try Groq or xAI Grok depending on the key format
         if active_groq_key:
+            is_xai = active_groq_key.startswith("xai-") or "xai" in active_groq_key.lower()
+            url = "https://api.x.ai/v1/chat/completions" if is_xai else "https://api.groq.com/openai/v1/chat/completions"
+            model = "grok-2-1212" if is_xai else "llama-3.3-70b-versatile"
+
             headers = {
                 "Authorization": f"Bearer {active_groq_key}",
                 "Content-Type": "application/json",
             }
             payload = {
-                "model": "llama-3.3-70b-versatile",
+                "model": model,
                 "messages": [{"role": "user", "content": prompt}],
             }
             try:
                 response = requests.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
+                    url,
                     headers=headers,
                     json=payload,
                     timeout=30,

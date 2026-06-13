@@ -164,6 +164,22 @@ export function useStore() {
         studentSubjects: data.subjects || [],
       };
       localStorage.setItem("localStudentUser", JSON.stringify({ user, data }));
+
+      // Load Supabase remote data asynchronously to restore chat sessions & learning materials
+      const remote = await loadRemoteData(user.id);
+      if (remote) {
+        const sessions = remote.chatSessions || [];
+        const currentId = remote.currentSessionId || null;
+        const activeSession = currentId ? sessions.find(s => s.id === currentId) : null;
+        state = {
+          ...state,
+          chatSessions: sessions,
+          currentSessionId: currentId,
+          chatHistory: activeSession ? activeSession.messages : state.chatHistory,
+          learningMaterials: remote.learningMaterials || [],
+        };
+        notify();
+      }
     } else {
       state = { ...state, user };
       // Load any additional data stored remotely in Supabase
@@ -423,7 +439,7 @@ export function useStore() {
         state = {
           ...state,
           user: freshUser ? { ...state.user, ...freshUser } : state.user,
-          chatHistory: data.chatHistory || [],
+          chatHistory: state.currentSessionId ? state.chatHistory : (data.chatHistory || []),
           quizResults: data.quizResults || [],
           studyPlan: data.studyPlan || [],
           studyProgress: data.studyProgress || 0,

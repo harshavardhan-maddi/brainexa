@@ -185,7 +185,7 @@ async function sendWelcomeEmail(email, name, password, institute) {
   }
 }
 
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 
 dotenv.config();
 
@@ -753,14 +753,18 @@ STUDENT CONTEXT:
             { role: 'user', content: prompt.substring(0, 4000) }
           ];
 
-          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          const isXAI = GROQ_API_KEY.startsWith('xai-') || GROQ_API_KEY.toLowerCase().includes('xai');
+          const url = isXAI ? 'https://api.x.ai/v1/chat/completions' : 'https://api.groq.com/openai/v1/chat/completions';
+          const model = isXAI ? 'grok-2-1212' : 'llama-3.3-70b-versatile';
+
+          const response = await fetch(url, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Authorization': 'Bearer ' + GROQ_API_KEY,
             },
             body: JSON.stringify({
-              model: 'llama-3.3-70b-versatile',
+              model: model,
               messages: messages,
               temperature: isSyllabus ? 0.1 : 0.65,
               max_tokens: 4096,
@@ -770,12 +774,12 @@ STUDENT CONTEXT:
           const data = await response.json();
           if (data.choices && data.choices[0]) {
             grokResponse = data.choices[0]?.message?.content || '';
-            console.log('✅ Groq response received');
+            console.log(`✅ ${isXAI ? 'xAI Grok' : 'Groq'} response received`);
           } else {
-            console.error('Groq failed:', data.error || data);
+            console.error(`${isXAI ? 'xAI Grok' : 'Groq'} failed:`, data.error || data);
           }
         } catch (error) {
-          console.error('Groq error:', error.message);
+          console.error('Grok/Groq error:', error.message);
         }
       })()
     );
@@ -2178,6 +2182,16 @@ app.post('/api/chat', async (req, res) => {
       response = response.replace(/\[VISUAL:\s*[^\]]+\]/i, '').trim();
     }
 
+    // Save user message and AI response to PostgreSQL chat_history
+    if (userId) {
+      try {
+        await pool.query('INSERT INTO chat_history (user_id, role, content) VALUES ($1, $2, $3)', [userId, 'user', message]);
+        await pool.query('INSERT INTO chat_history (user_id, role, content) VALUES ($1, $2, $3)', [userId, 'assistant', response]);
+      } catch (dbErr) {
+        console.error('Failed to save chat to database:', dbErr.message);
+      }
+    }
+
     res.json({ success: true, response, imageUrl });
   } catch (error) {
     console.error('Chat Error:', error);
@@ -3031,14 +3045,22 @@ if (!process.env.VERCEL) {
   const pyPort = process.env.PY_PORT || '8002';
   const pyHost = process.env.PY_HOST || '127.0.0.1';
   // Start FastAPI with uvicorn using env variables
-  const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
   console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
-  const child = exec(cmd, (error, stdout, stderr) => {
-    if (error) {
-      console.error(`FastAPI failed to start: ${error.message}`);
+  const child = spawn('python', ['-m', 'uvicorn', 'server_py.main:app', '--host', pyHost, '--port', pyPort]);
+  child.stdout.on('data', (data) => {
+    const lines = data.toString().split('\n');
+    for (const line of lines) {
+      if (line.trim()) console.log(`[FastAPI] ${line.trim()}`);
     }
-    if (stderr) console.error(`FastAPI stderr: ${stderr}`);
-    if (stdout) console.log(`FastAPI stdout: ${stdout}`);
+  });
+  child.stderr.on('data', (data) => {
+    const lines = data.toString().split('\n');
+    for (const line of lines) {
+      if (line.trim()) console.error(`[FastAPI stderr] ${line.trim()}`);
+    }
+  });
+  child.on('error', (err) => {
+    console.error(`[FastAPI error] Failed to start: ${err.message}`);
   });
 }
 
