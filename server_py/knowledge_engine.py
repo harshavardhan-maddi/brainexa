@@ -25,13 +25,14 @@ class KnowledgeEngine:
         if not os.path.exists(self.image_dir):
             os.makedirs(self.image_dir)
 
-    async def generate_image(self, prompt: str) -> Optional[str]:
+    async def generate_image(self, prompt: str, hf_key: Optional[str] = None) -> Optional[str]:
         """Generates an image using Hugging Face and returns the filename."""
-        if not self.hf_api_key:
+        active_hf_key = hf_key or self.hf_api_key
+        if not active_hf_key:
             return None
             
         API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
-        headers = {"Authorization": f"Bearer {self.hf_api_key}"}
+        headers = {"Authorization": f"Bearer {active_hf_key}"}
         
         try:
             payload = {"inputs": f"Educational illustration: {prompt}, detailed, high quality, 4k"}
@@ -61,7 +62,7 @@ class KnowledgeEngine:
     # ──────────────────────────────────────────────
     # Module 1: Search + Retrieval
     # ──────────────────────────────────────────────
-    async def optimize_search_query(self, student_request: str) -> str:
+    async def optimize_search_query(self, student_request: str, **kwargs) -> str:
         """Use AI to turn a natural language request into a keyword-rich search query."""
         prompt = f"""
 Convert the following student request into a single, optimized search engine query that will find the most accurate educational content.
@@ -71,14 +72,14 @@ STUDENT REQUEST: "{student_request}"
 
 OUTPUT ONLY THE QUERY STRING.
 """
-        optimized = await self.call_ai(prompt)
+        optimized = await self.call_ai(prompt, **kwargs)
         if optimized.startswith("Error:"):
             return student_request
         return optimized.strip().strip('"')
 
-    async def search_content(self, topic: str) -> List[Dict[str, str]]:
+    async def search_content(self, topic: str, **kwargs) -> List[Dict[str, str]]:
         """Try SerpAPI first, then fall back to DuckDuckGo (free, no key)."""
-        optimized_query = await self.optimize_search_query(topic)
+        optimized_query = await self.optimize_search_query(topic, **kwargs)
         
         if self.serp_api_key:
             results = self._search_serpapi(optimized_query)
@@ -239,12 +240,12 @@ OUTPUT ONLY THE QUERY STRING.
     # ──────────────────────────────────────────────
     # Module 2.5: Direct Answer Flow
     # ──────────────────────────────────────────────
-    async def get_direct_answer(self, topic: str) -> Dict:
+    async def get_direct_answer(self, topic: str, **kwargs) -> Dict:
         """One-shot flow: search, extract top results, and summarize."""
         print(f"Generating Direct Answer for: {topic}")
         
         # 1. Search
-        results = await self.search_content(topic)
+        results = await self.search_content(topic, **kwargs)
         if not results:
             return {"success": False, "error": "No search results found."}
         
@@ -252,11 +253,16 @@ OUTPUT ONLY THE QUERY STRING.
         top_results = results[:3]
         extracted_contents = []
         
-        for res in top_results:
-            print(f"Extracting: {res['link']}")
-            data = self.extract_content(res['link'])
-            if data:
-                extracted_contents.append(data)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            futures = [executor.submit(self.extract_content, res['link']) for res in top_results]
+            for future in futures:
+                try:
+                    data = future.result()
+                    if data:
+                        extracted_contents.append(data)
+                except Exception as exc:
+                    print(f"Extraction generated an exception: {exc}")
         
         if not extracted_contents:
             # Fall back to just snippets if full extraction failed
@@ -265,7 +271,7 @@ OUTPUT ONLY THE QUERY STRING.
             raw_text = self.filter_and_rank(extracted_contents)
             
         # 3. Summarize with focus on student request
-        summary = await self.summarize_content(raw_text, topic)
+        summary = await self.summarize_content(raw_text, topic, **kwargs)
         
         return {
             "success": True, 
@@ -292,11 +298,15 @@ OUTPUT ONLY THE QUERY STRING.
     # ──────────────────────────────────────────────
     # Module 4: AI call helper
     # ──────────────────────────────────────────────
-    async def call_ai(self, prompt: str) -> str:
+    async def call_ai(self, prompt: str, gemini_key: Optional[str] = None, groq_key: Optional[str] = None, hf_key: Optional[str] = None, **kwargs) -> str:
+        active_groq_key = groq_key or self.grok_api_key
+        active_gemini_key = gemini_key or self.gemini_api_key
+        active_hf_key = hf_key or self.hf_api_key
+
         # 1. Try Groq (Llama 3.3 70B) - Fastest and very capable
-        if self.grok_api_key:
+        if active_groq_key:
             headers = {
-                "Authorization": f"Bearer {self.grok_api_key}",
+                "Authorization": f"Bearer {active_groq_key}",
                 "Content-Type": "application/json",
             }
             payload = {
@@ -319,12 +329,12 @@ OUTPUT ONLY THE QUERY STRING.
                 print(f"Groq Exception: {e}")
 
         # 2. Try Gemini Flash models - fallback loop
-        if self.gemini_api_key:
+        if active_gemini_key:
             models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
             for model in models:
                 url = (
                     f"https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"{model}:generateContent?key={self.gemini_api_key}"
+                    f"{model}:generateContent?key={active_gemini_key}"
                 )
                 payload = {"contents": [{"parts": [{"text": prompt}]}]}
                 try:
@@ -337,8 +347,8 @@ OUTPUT ONLY THE QUERY STRING.
                 except Exception as e:
                     print(f"Gemini {model} Exception: {e}")
 
-        if self.hf_api_key:
-            headers = {"Authorization": f"Bearer {self.hf_api_key}"}
+        if active_hf_key:
+            headers = {"Authorization": f"Bearer {active_hf_key}"}
             hf_prompt = prompt.strip()
             payload = {
                 "inputs": hf_prompt,
@@ -377,7 +387,7 @@ OUTPUT ONLY THE QUERY STRING.
     # ──────────────────────────────────────────────
     # Module 4: AI Summarisation
     # ──────────────────────────────────────────────
-    async def summarize_content(self, raw_content: str, topic: str) -> str:
+    async def summarize_content(self, raw_content: str, topic: str, **kwargs) -> str:
         prompt = f"""
 You are the Brainexa AI Knowledge Engine, a world-class analytical Study Mentor. 
 A student is deeply exploring the topic: "{topic}"
@@ -405,12 +415,12 @@ RETRIEVED CONTENT:
 
 Provide the most accurate and high-precision response possible:
 """
-        return await self.call_ai(prompt)
+        return await self.call_ai(prompt, **kwargs)
 
     # ──────────────────────────────────────────────
     # Module 5: Active Learning Questions
     # ──────────────────────────────────────────────
-    async def generate_questions(self, topic: str, explanation: str) -> List[Dict]:
+    async def generate_questions(self, topic: str, explanation: str, **kwargs) -> List[Dict]:
         prompt = f"""
 Generate 3-5 conceptual questions based on the topic "{topic}" and the explanation below to test understanding.
 Include a mix of MCQ and conceptual short answers.
@@ -435,7 +445,7 @@ Return ONLY a JSON array with the following structure:
     }}
 ]
 """
-        response = await self.call_ai(prompt)
+        response = await self.call_ai(prompt, **kwargs)
         try:
             clean_res = response.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_res)
@@ -445,7 +455,7 @@ Return ONLY a JSON array with the following structure:
     # ──────────────────────────────────────────────
     # Module 6: Answer Evaluation
     # ──────────────────────────────────────────────
-    async def evaluate_answer(self, question: str, student_answer: str, correct_info: str) -> Dict:
+    async def evaluate_answer(self, question: str, student_answer: str, correct_info: str, **kwargs) -> Dict:
         prompt = f"""
 Evaluate the student's answer based on correctness, clarity, and understanding.
 
@@ -460,7 +470,7 @@ Return ONLY a JSON object:
     "correct": true/false
 }}
 """
-        response = await self.call_ai(prompt)
+        response = await self.call_ai(prompt, **kwargs)
         try:
             clean_res = response.replace("```json", "").replace("```", "").strip()
             return json.loads(clean_res)
@@ -486,7 +496,7 @@ Return ONLY a JSON object:
             return "Better"
         return "Weak"
 
-    async def generate_study_material(self, subject: str, topics: List[str], custom_instructions: Optional[str] = None) -> str:
+    async def generate_study_material(self, subject: str, topics: List[str], custom_instructions: Optional[str] = None, **kwargs) -> str:
         topics_str = ", ".join(topics)
         custom_block = f"\n========================\nCUSTOM STUDENT REQUIREMENTS\n========================\n{custom_instructions}\n" if custom_instructions else ""
         
@@ -598,7 +608,7 @@ INPUT
 Topics to cover: {topics_str}
 Subject: {subject}
 """
-        return await self.call_ai(prompt)
+        return await self.call_ai(prompt, **kwargs)
 
     def _get_current_date(self) -> str:
         from datetime import datetime

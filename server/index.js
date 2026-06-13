@@ -483,6 +483,18 @@ function analyzeSlang(message) {
   return { slangLevel, detectedSlang };
 }
 
+function getPyHeaders() {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
+  const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROK_API_KEY || process.env.GROQ_API_KEY || '';
+  return {
+    'Content-Type': 'application/json',
+    'X-Gemini-Key': GEMINI_API_KEY,
+    'X-Groq-Key': GROQ_API_KEY,
+    'X-HF-Key': process.env.HUGGINGFACE_API_KEY || '',
+    'X-Brevo-Key': process.env.BREVO_API_KEY || ''
+  };
+}
+
 // AI call (chat/syllabus)
 async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
@@ -622,7 +634,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
         console.log(`🔍 Proactive Knowledge Retrieval for: ${prompt.substring(0, 50)}...`);
         const knowledgeResponse = await fetch(`${PY_BACKEND_URL}/knowledge/direct-answer`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getPyHeaders(),
           body: JSON.stringify({ topic: prompt })
         });
         const kData = await knowledgeResponse.json();
@@ -729,132 +741,144 @@ STUDENT CONTEXT:
   let grokResponse = '';
   let geminiResponse = '';
 
-  if (USE_GROQ) {
-    try {
-      const messages = [
-        { role: 'system', content: systemPrompt },
-        ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-        { role: 'user', content: prompt.substring(0, 4000) }
-      ];
+  const promises = [];
 
-      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + GROQ_API_KEY,
-        },
-        body: JSON.stringify({
-          model: 'llama-3.3-70b-versatile',
-          messages: messages,
-          temperature: isSyllabus ? 0.1 : 0.65,
-          max_tokens: 4096,
-          top_p: 0.9,
-        }),
-      });
-      const data = await response.json();
-      if (data.choices && data.choices[0]) {
-        grokResponse = data.choices[0]?.message?.content || '';
-        console.log('✅ Groq response received');
-      } else {
-        console.error('Groq failed:', data.error || data);
-      }
-    } catch (error) {
-      console.error('Groq error:', error.message);
-    }
+  if (USE_GROQ) {
+    promises.push(
+      (async () => {
+        try {
+          const messages = [
+            { role: 'system', content: systemPrompt },
+            ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+            { role: 'user', content: prompt.substring(0, 4000) }
+          ];
+
+          const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + GROQ_API_KEY,
+            },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              messages: messages,
+              temperature: isSyllabus ? 0.1 : 0.65,
+              max_tokens: 4096,
+              top_p: 0.9,
+            }),
+          });
+          const data = await response.json();
+          if (data.choices && data.choices[0]) {
+            grokResponse = data.choices[0]?.message?.content || '';
+            console.log('✅ Groq response received');
+          } else {
+            console.error('Groq failed:', data.error || data);
+          }
+        } catch (error) {
+          console.error('Groq error:', error.message);
+        }
+      })()
+    );
   }
 
   if (USE_GEMINI) {
-    try {
-      let contents = history.map(m => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
-
-      contents.push({
-        role: 'user',
-        parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
-      });
-
-      // Sanitize sequence to guarantee strict alternation: user, model, user...
-      let cleanContents = [];
-      for (let turn of contents) {
-        if (cleanContents.length === 0) {
-          if (turn.role === 'user') {
-            cleanContents.push(turn);
-          }
-        } else {
-          let prev = cleanContents[cleanContents.length - 1];
-          if (prev.role === turn.role) {
-            prev.parts[0].text += '\n\n' + turn.parts[0].text;
-          } else {
-            cleanContents.push(turn);
-          }
-        }
-      }
-
-      // Ensure it ends with user
-      while (cleanContents.length > 0 && cleanContents[cleanContents.length - 1].role !== 'user') {
-        cleanContents.pop();
-      }
-
-      // If empty, fallback to just the current prompt
-      if (cleanContents.length === 0) {
-        cleanContents.push({
-          role: 'user',
-          parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
-        });
-      }
-
-      const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
-      let lastError = null;
-
-      for (const model of models) {
+    promises.push(
+      (async () => {
         try {
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` + GEMINI_API_KEY,
-            {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents: cleanContents,
-                generationConfig: { temperature: isSyllabus ? 0.1 : 0.75, maxOutputTokens: 4096 },
-              }),
-            }
-          );
-          const data = await response.json();
-          if (data.candidates && data.candidates[0]) {
-            geminiResponse = data.candidates[0]?.content?.parts?.[0]?.text || '';
-            console.log(`✅ Gemini response received using model: ${model}`);
-            lastError = null;
-            break;
-          } else if (data.error) {
-            lastError = data.error;
-            const isModelError = data.error.code === 404 || 
-                                 data.error.message.includes('not found') || 
-                                 data.error.message.includes('not supported') ||
-                                 data.error.message.includes('quota') ||
-                                 data.error.status === 'RESOURCE_EXHAUSTED';
-            if (isModelError) {
-              console.warn(`⚠️ Model ${model} failed (unsupported or quota issue). Trying next model...`);
-              continue;
+          let contents = history.map(m => ({
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: m.content }]
+          }));
+
+          contents.push({
+            role: 'user',
+            parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
+          });
+
+          // Sanitize sequence to guarantee strict alternation: user, model, user...
+          let cleanContents = [];
+          for (let turn of contents) {
+            if (cleanContents.length === 0) {
+              if (turn.role === 'user') {
+                cleanContents.push(turn);
+              }
             } else {
-              console.error(`Gemini failed with model ${model}:`, data.error);
-              break;
+              let prev = cleanContents[cleanContents.length - 1];
+              if (prev.role === turn.role) {
+                prev.parts[0].text += '\n\n' + turn.parts[0].text;
+              } else {
+                cleanContents.push(turn);
+              }
             }
           }
-        } catch (fetchErr) {
-          lastError = fetchErr;
-          console.error(`Fetch error with model ${model}:`, fetchErr.message);
-        }
-      }
 
-      if (lastError && !geminiResponse) {
-        console.error('All Gemini models failed. Last error:', lastError);
-      }
-    } catch (error) {
-      console.error('Gemini error:', error.message);
-    }
+          // Ensure it ends with user
+          while (cleanContents.length > 0 && cleanContents[cleanContents.length - 1].role !== 'user') {
+            cleanContents.pop();
+          }
+
+          // If empty, fallback to just the current prompt
+          if (cleanContents.length === 0) {
+            cleanContents.push({
+              role: 'user',
+              parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
+            });
+          }
+
+          const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+          let lastError = null;
+
+          for (const model of models) {
+            try {
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` + GEMINI_API_KEY,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    contents: cleanContents,
+                    generationConfig: { temperature: isSyllabus ? 0.1 : 0.75, maxOutputTokens: 4096 },
+                  }),
+                }
+              );
+              const data = await response.json();
+              if (data.candidates && data.candidates[0]) {
+                geminiResponse = data.candidates[0]?.content?.parts?.[0]?.text || '';
+                console.log(`✅ Gemini response received using model: ${model}`);
+                lastError = null;
+                break;
+              } else if (data.error) {
+                lastError = data.error;
+                const isModelError = data.error.code === 404 || 
+                                     data.error.message.includes('not found') || 
+                                     data.error.message.includes('not supported') ||
+                                     data.error.message.includes('quota') ||
+                                     data.error.status === 'RESOURCE_EXHAUSTED';
+                if (isModelError) {
+                  console.warn(`⚠️ Model ${model} failed (unsupported or quota issue). Trying next model...`);
+                  continue;
+                } else {
+                  console.error(`Gemini failed with model ${model}:`, data.error);
+                  break;
+                }
+              }
+            } catch (fetchErr) {
+              lastError = fetchErr;
+              console.error(`Fetch error with model ${model}:`, fetchErr.message);
+            }
+          }
+
+          if (lastError && !geminiResponse) {
+            console.error('All Gemini models failed. Last error:', lastError);
+          }
+        } catch (error) {
+          console.error('Gemini error:', error.message);
+        }
+      })()
+    );
   }
+
+  await Promise.all(promises);
 
   // Smart response selection: prefer the longest, most detailed response.
   // Longer responses from LLMs generally indicate more thorough coverage.
@@ -1074,8 +1098,12 @@ async function extractText(filePath) {
       const blob = new Blob([buffer], { type: 'application/pdf' });
       formData.append('file', blob, path.basename(filePath));
 
+      const pyHeaders = getPyHeaders();
+      delete pyHeaders['Content-Type'];
+
       const pyRes = await fetch(`${PY_BACKEND_URL}/extract-pdf`, {
         method: 'POST',
+        headers: pyHeaders,
         body: formData
       });
 
@@ -1112,7 +1140,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     // Send via Python service
     const pyRes = await fetch(`${PY_BACKEND_URL}/send-verification-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ email, otp })
     });
 
@@ -2544,7 +2572,7 @@ app.post('/api/knowledge/search', async (req, res) => {
   try {
     const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/search`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ topic })
     });
     const data = await pyRes.json();
@@ -2568,7 +2596,7 @@ app.post('/api/knowledge/direct-answer', async (req, res) => {
   try {
     const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/direct-answer`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ topic })
     });
     const data = await pyRes.json();
@@ -2628,7 +2656,7 @@ app.post('/api/knowledge/content', async (req, res) => {
   try {
     const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/content`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ url, topic })
     });
     const data = await pyRes.json();
@@ -2652,7 +2680,7 @@ app.post('/api/knowledge/questions', async (req, res) => {
   try {
     const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/questions`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ topic, explanation })
     });
     const data = await pyRes.json();
@@ -2676,7 +2704,7 @@ app.post('/api/knowledge/evaluate', async (req, res) => {
   try {
     const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/evaluate`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ question, answer, correct_info: correctInfo })
     });
     const data = await pyRes.json();
@@ -2787,7 +2815,7 @@ app.post('/api/user/change-email-otp', async (req, res) => {
 
     const pyRes = await fetch(`${PY_BACKEND_URL}/send-verification-otp`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getPyHeaders(),
       body: JSON.stringify({ email: newEmail, otp })
     });
 

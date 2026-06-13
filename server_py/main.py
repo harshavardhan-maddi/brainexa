@@ -9,8 +9,15 @@ from typing import Optional
 import bcrypt
 import psycopg2
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Body, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+def get_key_overrides(request: Request):
+    return {
+        "gemini_key": request.headers.get("x-gemini-key"),
+        "groq_key": request.headers.get("x-groq-key"),
+        "hf_key": request.headers.get("x-hf-key")
+    }
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 import pypdf
@@ -66,37 +73,38 @@ async def root():
     return {"status": "online", "service": "Brainexa Python Backend"}
 
 @app.post("/knowledge/search")
-async def search_knowledge(topic: str = Body(..., embed=True)):
-    results = await engine.search_content(topic)
+async def search_knowledge(request: Request, topic: str = Body(..., embed=True)):
+    results = await engine.search_content(topic, **get_key_overrides(request))
     return {"success": True, "results": results}
 
 @app.post("/knowledge/direct-answer")
-async def direct_answer(topic: str = Body(..., embed=True)):
-    data = await engine.get_direct_answer(topic)
+async def direct_answer(request: Request, topic: str = Body(..., embed=True)):
+    data = await engine.get_direct_answer(topic, **get_key_overrides(request))
     return data
 
 @app.post("/knowledge/content")
-async def extract_knowledge(url: str = Body(..., embed=True), topic: str = Body(..., embed=True)):
+async def extract_knowledge(request: Request, url: str = Body(..., embed=True), topic: str = Body(..., embed=True)):
     data = engine.extract_content(url)
     if not data:
         return {"success": False, "error": "Failed to extract content"}
     
     raw_text = engine.filter_and_rank([data])
-    summary = await engine.summarize_content(raw_text, topic)
+    summary = await engine.summarize_content(raw_text, topic, **get_key_overrides(request))
     return {"success": True, "summary": summary, "data": data}
 
 @app.post("/knowledge/questions")
-async def generate_questions(topic: str = Body(..., embed=True), explanation: str = Body(..., embed=True)):
-    questions = await engine.generate_questions(topic, explanation)
+async def generate_questions(request: Request, topic: str = Body(..., embed=True), explanation: str = Body(..., embed=True)):
+    questions = await engine.generate_questions(topic, explanation, **get_key_overrides(request))
     return {"success": True, "questions": questions}
 
 @app.post("/knowledge/evaluate")
 async def evaluate_answer(
+    request: Request,
     question: str = Body(..., embed=True), 
     answer: str = Body(..., embed=True), 
     correct_info: str = Body(..., embed=True)
 ):
-    evaluation = await engine.evaluate_answer(question, answer, correct_info)
+    evaluation = await engine.evaluate_answer(question, answer, correct_info, **get_key_overrides(request))
     return {"success": True, "evaluation": evaluation}
 
 # Helper to check subscription status
@@ -117,6 +125,7 @@ def is_subscribed(user_id: str) -> bool:
 
 @app.post("/knowledge/generate-material")
 async def generate_material(
+    request: Request,
     subject: str = Body(..., embed=True),
     topics: list[str] = Body(..., embed=True),
     customInstructions: Optional[str] = Body(None, embed=True),
@@ -140,7 +149,8 @@ async def generate_material(
         else:
             performance = "Weak"
     # Generate material
-    content = await engine.generate_study_material(subject, topics, customInstructions)
+    keys = get_key_overrides(request)
+    content = await engine.generate_study_material(subject, topics, customInstructions, **keys)
     if content and not content.startswith("Error:"):
         try:
             import json
@@ -168,7 +178,7 @@ async def generate_material(
                 for prompt in visual_tags:
                     print(f"DEBUG: Generating image for prompt: {prompt}")
                     # Generate the image
-                    filename = await engine.generate_image(prompt)
+                    filename = await engine.generate_image(prompt, hf_key=keys.get("hf_key"))
                     if filename:
                         # Convert to Base64 to bypass all port/CORS issues
                         b64_data = engine.get_image_base64(filename)
@@ -194,6 +204,7 @@ async def generate_material(
 
 @app.post("/knowledge/regenerate-plan")
 async def regenerate_plan(
+    request: Request,
     userId: str = Body(..., embed=True)
 ) -> dict:
     """Delete any existing study plan for the user and generate a fresh one.
@@ -217,7 +228,7 @@ async def regenerate_plan(
     # You may adjust the subject/topics as needed.
     placeholder_subject = "General"
     placeholder_topics: list[str] = []
-    content = await engine.generate_study_material(placeholder_subject, placeholder_topics, None)
+    content = await engine.generate_study_material(placeholder_subject, placeholder_topics, None, **get_key_overrides(request))
     return {"success": True, "plan": content}
 
 # ... existing routes ...
@@ -368,7 +379,7 @@ async def forgot_password(req: ForgotPasswordRequest):
         conn.close()
 
 @app.post("/send-verification-otp")
-async def send_verification_otp(req: VerificationOTPRequest):
+async def send_verification_otp(request: Request, req: VerificationOTPRequest):
     sender_email = os.getenv("EMAIL_USER", "brainexa.ai.support@gmail.com")
     password = os.getenv("EMAIL_PASS", "").replace(' ', '')
     if not password:
@@ -397,7 +408,7 @@ If you did not request this, please ignore this email.
     msg.attach(MIMEText(body, 'plain'))
 
     # Use Brevo API to bypass Render's SMTP block and allow sending to anyone
-    brevo_api_key = os.getenv("BREVO_API_KEY")
+    brevo_api_key = request.headers.get("x-brevo-key") or os.getenv("BREVO_API_KEY")
     if brevo_api_key:
         try:
             url = "https://api.brevo.com/v3/smtp/email"
