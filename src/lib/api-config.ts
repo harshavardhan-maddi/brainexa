@@ -7,7 +7,7 @@
 const isLocal = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
 
 export const API_BASE_URL = import.meta.env.VITE_BACKEND_URL || (isLocal ? "http://localhost:3003" : (typeof window !== "undefined" ? window.location.origin : "https://brainexa-node-backend.onrender.com"));
-export const PY_API_BASE_URL = import.meta.env.VITE_PY_BACKEND_URL || (isLocal ? "http://localhost:8000" : "https://brainexa-py-backend.onrender.com");
+export const PY_API_BASE_URL = import.meta.env.VITE_PY_BACKEND_URL || (isLocal ? "http://localhost:8002" : "https://brainexa-py-backend.onrender.com");
 
 // Derived API endpoints for common services
 export const AUTH_API = `${API_BASE_URL}/api/auth`;

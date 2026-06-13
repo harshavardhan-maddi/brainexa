@@ -20,6 +20,7 @@ class KnowledgeEngine:
         self.gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("VITE_GEMINI_API_KEY")
         self.grok_api_key = os.getenv("GROQ_API_KEY") or os.getenv("GROK_API_KEY")
         self.hf_api_key = os.getenv("HUGGINGFACE_API_KEY") or os.getenv("HF_API_KEY")
+        self.hf_model = os.getenv("HF_MODEL", "Qwen/Qwen2.5-72B-Instruct")
         self.image_dir = os.path.join(os.path.dirname(__file__), "generated_images")
         if not os.path.exists(self.image_dir):
             os.makedirs(self.image_dir)
@@ -317,22 +318,24 @@ OUTPUT ONLY THE QUERY STRING.
             except Exception as e:
                 print(f"Groq Exception: {e}")
 
-        # 2. Try Gemini 1.5 Flash - Highly reliable and smart
+        # 2. Try Gemini Flash models - fallback loop
         if self.gemini_api_key:
-            url = (
-                f"https://generativelanguage.googleapis.com/v1beta/models/"
-                f"gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
-            )
-            payload = {"contents": [{"parts": [{"text": prompt}]}]}
-            try:
-                response = requests.post(url, json=payload, timeout=30)
-                data = response.json()
-                if response.status_code == 200:
-                    return data["candidates"][0]["content"]["parts"][0]["text"]
-                else:
-                    print(f"Gemini API Error: {response.status_code}")
-            except Exception as e:
-                print(f"Gemini Exception: {e}")
+            models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
+            for model in models:
+                url = (
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model}:generateContent?key={self.gemini_api_key}"
+                )
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                try:
+                    response = requests.post(url, json=payload, timeout=30)
+                    data = response.json()
+                    if response.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+                        return data["candidates"][0]["content"]["parts"][0]["text"]
+                    else:
+                        print(f"Gemini {model} API Error: {response.status_code} - {data.get('error', {}).get('message', '')}")
+                except Exception as e:
+                    print(f"Gemini {model} Exception: {e}")
 
         if self.hf_api_key:
             headers = {"Authorization": f"Bearer {self.hf_api_key}"}

@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-const GROK_API_KEY = process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
+const GROK_API_KEY = process.env.GROQ_API_KEY || process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
 
 console.log('=== API Key Debug ===');
 console.log('GEMINI_API_KEY:', GEMINI_API_KEY ? GEMINI_API_KEY.substring(0, 10) + '...' : 'MISSING');
@@ -11,9 +11,9 @@ console.log('');
 
 // Test Gemini
 async function testGemini() {
-  console.log('--- Testing Gemini (gemini-1.5-flash) ---');
+  console.log('--- Testing Gemini (gemini-2.5-flash) ---');
   try {
-    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_API_KEY;
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

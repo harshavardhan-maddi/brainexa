@@ -37,26 +37,80 @@ async function callGemini(prompt: string, history: { role: string; content: stri
   // Add the current user prompt
   contents.push({ role: 'user', parts: [{ text: prompt }] });
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 4096,
-        },
-      }),
+  // Sanitize sequence to guarantee strict alternation: user, model, user...
+  const cleanContents = [];
+  for (const turn of contents) {
+    if (cleanContents.length === 0) {
+      if (turn.role === 'user') {
+        cleanContents.push(turn);
+      }
+    } else {
+      const prev = cleanContents[cleanContents.length - 1];
+      if (prev.role === turn.role) {
+        prev.parts[0].text += '\n\n' + turn.parts[0].text;
+      } else {
+        cleanContents.push(turn);
+      }
     }
-  );
-
-  const data = await response.json();
-  if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
-    return data.candidates[0].content.parts[0].text;
   }
-  throw new Error('Gemini API error: ' + JSON.stringify(data));
+
+  // Ensure it ends with user
+  while (cleanContents.length > 0 && cleanContents[cleanContents.length - 1].role !== 'user') {
+    cleanContents.pop();
+  }
+
+  // If empty, fallback to just the current prompt
+  if (cleanContents.length === 0) {
+    cleanContents.push({
+      role: 'user',
+      parts: [{ text: prompt }]
+    });
+  }
+
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  let lastError = null;
+
+  for (const model of models) {
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: cleanContents,
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 4096,
+            },
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.candidates && data.candidates[0]?.content?.parts?.[0]?.text) {
+        return data.candidates[0].content.parts[0].text;
+      } else if (data.error) {
+        lastError = data.error;
+        const isModelError = data.error.code === 404 || 
+                             data.error.message.includes('not found') || 
+                             data.error.message.includes('not supported') ||
+                             data.error.message.includes('quota') ||
+                             data.error.status === 'RESOURCE_EXHAUSTED';
+        if (isModelError) {
+          console.warn(`[AI Service] Model ${model} failed (unsupported or quota issue). Trying next model...`);
+          continue;
+        } else {
+          throw new Error('Gemini API error with model ' + model + ': ' + JSON.stringify(data.error));
+        }
+      }
+    } catch (err: any) {
+      lastError = err;
+      console.error(`[AI Service] Fetch error with model ${model}:`, err.message);
+    }
+  }
+
+  throw new Error('All Gemini models failed. Last error: ' + (lastError?.message || JSON.stringify(lastError)));
 }
 
 // Grok API call with conversation history support

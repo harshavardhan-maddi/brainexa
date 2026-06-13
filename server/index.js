@@ -189,6 +189,8 @@ import { exec } from 'child_process';
 
 dotenv.config();
 
+const PY_BACKEND_URL = process.env.PY_BACKEND_URL || (process.env.NODE_ENV === 'production' ? 'https://brainexa-py-backend.onrender.com' : 'http://localhost:8002');
+
 // Initialize Database
 initDB();
 
@@ -618,7 +620,7 @@ async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
     if (isFactual) {
       try {
         console.log(`🔍 Proactive Knowledge Retrieval for: ${prompt.substring(0, 50)}...`);
-        const knowledgeResponse = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/knowledge/direct-answer`, {
+        const knowledgeResponse = await fetch(`${PY_BACKEND_URL}/knowledge/direct-answer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ topic: prompt })
@@ -763,7 +765,7 @@ STUDENT CONTEXT:
 
   if (USE_GEMINI) {
     try {
-      const contents = history.map(m => ({
+      let contents = history.map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.content }]
       }));
@@ -773,23 +775,81 @@ STUDENT CONTEXT:
         parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
       });
 
-      const response = await fetch(
-        'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + GEMINI_API_KEY,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            contents: contents,
-            generationConfig: { temperature: isSyllabus ? 0.1 : 0.75, maxOutputTokens: 4096 },
-          }),
+      // Sanitize sequence to guarantee strict alternation: user, model, user...
+      let cleanContents = [];
+      for (let turn of contents) {
+        if (cleanContents.length === 0) {
+          if (turn.role === 'user') {
+            cleanContents.push(turn);
+          }
+        } else {
+          let prev = cleanContents[cleanContents.length - 1];
+          if (prev.role === turn.role) {
+            prev.parts[0].text += '\n\n' + turn.parts[0].text;
+          } else {
+            cleanContents.push(turn);
+          }
         }
-      );
-      const data = await response.json();
-      if (data.candidates && data.candidates[0]) {
-        geminiResponse = data.candidates[0]?.content?.parts?.[0]?.text || '';
-        console.log('✅ Gemini response received');
-      } else {
-        console.error('Gemini failed:', data.error || data);
+      }
+
+      // Ensure it ends with user
+      while (cleanContents.length > 0 && cleanContents[cleanContents.length - 1].role !== 'user') {
+        cleanContents.pop();
+      }
+
+      // If empty, fallback to just the current prompt
+      if (cleanContents.length === 0) {
+        cleanContents.push({
+          role: 'user',
+          parts: [{ text: (systemPrompt + '\n\nUser Question: ' + prompt).substring(0, 8000) }]
+        });
+      }
+
+      const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+      let lastError = null;
+
+      for (const model of models) {
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=` + GEMINI_API_KEY,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                contents: cleanContents,
+                generationConfig: { temperature: isSyllabus ? 0.1 : 0.75, maxOutputTokens: 4096 },
+              }),
+            }
+          );
+          const data = await response.json();
+          if (data.candidates && data.candidates[0]) {
+            geminiResponse = data.candidates[0]?.content?.parts?.[0]?.text || '';
+            console.log(`✅ Gemini response received using model: ${model}`);
+            lastError = null;
+            break;
+          } else if (data.error) {
+            lastError = data.error;
+            const isModelError = data.error.code === 404 || 
+                                 data.error.message.includes('not found') || 
+                                 data.error.message.includes('not supported') ||
+                                 data.error.message.includes('quota') ||
+                                 data.error.status === 'RESOURCE_EXHAUSTED';
+            if (isModelError) {
+              console.warn(`⚠️ Model ${model} failed (unsupported or quota issue). Trying next model...`);
+              continue;
+            } else {
+              console.error(`Gemini failed with model ${model}:`, data.error);
+              break;
+            }
+          }
+        } catch (fetchErr) {
+          lastError = fetchErr;
+          console.error(`Fetch error with model ${model}:`, fetchErr.message);
+        }
+      }
+
+      if (lastError && !geminiResponse) {
+        console.error('All Gemini models failed. Last error:', lastError);
       }
     } catch (error) {
       console.error('Gemini error:', error.message);
@@ -1014,7 +1074,7 @@ async function extractText(filePath) {
       const blob = new Blob([buffer], { type: 'application/pdf' });
       formData.append('file', blob, path.basename(filePath));
 
-      const pyRes = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/extract-pdf`, {
+      const pyRes = await fetch(`${PY_BACKEND_URL}/extract-pdf`, {
         method: 'POST',
         body: formData
       });
@@ -1050,7 +1110,7 @@ app.post('/api/auth/send-otp', async (req, res) => {
     await pool.query('INSERT INTO temp_otps (email, otp) VALUES ($1, $2)', [email, otp]);
 
     // Send via Python service
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || 'http://localhost:8000'}/send-verification-otp`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/send-verification-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, otp })
@@ -2482,7 +2542,7 @@ io.on('connection', (socket) => {
 app.post('/api/knowledge/search', async (req, res) => {
   const { topic, userId } = req.body;
   try {
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/knowledge/search`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/search`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic })
@@ -2506,7 +2566,7 @@ app.post('/api/knowledge/search', async (req, res) => {
 app.post('/api/knowledge/direct-answer', async (req, res) => {
   const { topic, userId } = req.body;
   try {
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || 'http://localhost:8000'}/knowledge/direct-answer`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/direct-answer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic })
@@ -2566,7 +2626,7 @@ app.get('/api/materials/history/:userId', async (req, res) => {
 app.post('/api/knowledge/content', async (req, res) => {
   const { url, topic, userId } = req.body;
   try {
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/knowledge/content`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/content`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url, topic })
@@ -2590,7 +2650,7 @@ app.post('/api/knowledge/content', async (req, res) => {
 app.post('/api/knowledge/questions', async (req, res) => {
   const { topic, explanation, userId } = req.body;
   try {
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/knowledge/questions`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ topic, explanation })
@@ -2614,7 +2674,7 @@ app.post('/api/knowledge/questions', async (req, res) => {
 app.post('/api/knowledge/evaluate', async (req, res) => {
   const { question, answer, correctInfo, topic, userId } = req.body;
   try {
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || `${process.env.PY_BACKEND_URL || 'http://localhost:8000'}`}`}/knowledge/evaluate`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/evaluate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ question, answer, correct_info: correctInfo })
@@ -2725,7 +2785,7 @@ app.post('/api/user/change-email-otp', async (req, res) => {
     await pool.query('DELETE FROM temp_otps WHERE email = $1', [newEmail]);
     await pool.query('INSERT INTO temp_otps (email, otp) VALUES ($1, $2)', [newEmail, otp]);
 
-    const pyRes = await fetch(`${process.env.PY_BACKEND_URL || 'http://localhost:8000'}/send-verification-otp`, {
+    const pyRes = await fetch(`${PY_BACKEND_URL}/send-verification-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: newEmail, otp })
@@ -2940,7 +3000,7 @@ if (!process.env.VERCEL) {
   });
 
   // FastAPI server entry point
-  const pyPort = process.env.PY_PORT || '8001';
+  const pyPort = process.env.PY_PORT || '8002';
   const pyHost = process.env.PY_HOST || '127.0.0.1';
   // Start FastAPI with uvicorn using env variables
   const cmd = `python -m uvicorn server_py.main:app --host ${pyHost} --port ${pyPort}`;
