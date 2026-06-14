@@ -2605,6 +2605,20 @@ app.post('/api/knowledge/search', async (req, res) => {
   }
 });
 
+app.get('/api/diag-keys', (req, res) => {
+  res.json({
+    success: true,
+    has_gemini: !!process.env.GEMINI_API_KEY,
+    gemini_len: process.env.GEMINI_API_KEY?.length || 0,
+    has_groq: !!process.env.GROQ_API_KEY,
+    groq_len: process.env.GROQ_API_KEY?.length || 0,
+    has_grok: !!process.env.GROK_API_KEY,
+    grok_len: process.env.GROK_API_KEY?.length || 0,
+    node_env: process.env.NODE_ENV,
+    py_backend_url: process.env.PY_BACKEND_URL || 'default'
+  });
+});
+
 app.post('/api/knowledge/direct-answer', async (req, res) => {
   const { topic, userId } = req.body;
   try {
