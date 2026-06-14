@@ -25,7 +25,11 @@ const LearningSession: React.FC<LearningSessionProps> = ({ url, topic, userId, i
   useEffect(() => {
     const fetchContent = async () => {
       if (initialSummary) {
-        setSummary(initialSummary);
+        if (initialSummary.startsWith('Error:')) {
+          setError(initialSummary.replace('Error:', '').trim());
+        } else {
+          setSummary(initialSummary);
+        }
         setLoading(false);
         return;
       }
@@ -39,7 +43,11 @@ const LearningSession: React.FC<LearningSessionProps> = ({ url, topic, userId, i
         });
         const data = await response.json();
         if (data.success) {
-          setSummary(data.summary);
+          if (data.summary.startsWith('Error:')) {
+            setError(data.summary.replace('Error:', '').trim());
+          } else {
+            setSummary(data.summary);
+          }
         } else {
           setError(data.error || 'Failed to extract content');
         }

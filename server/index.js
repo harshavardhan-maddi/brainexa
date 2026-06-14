@@ -485,7 +485,7 @@ function analyzeSlang(message) {
 
 function getPyHeaders() {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-  const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROK_API_KEY || process.env.GROQ_API_KEY || '';
+  const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY || '';
   return {
     'Content-Type': 'application/json',
     'X-Gemini-Key': GEMINI_API_KEY,
@@ -498,7 +498,7 @@ function getPyHeaders() {
 // AI call (chat/syllabus)
 async function callAI(prompt, isSyllabus = false, history = [], context = {}) {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
-  const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.VITE_GROK_API_KEY || process.env.GROQ_API_KEY;
+  const GROQ_API_KEY = process.env.GROQ_API_KEY || process.env.GROK_API_KEY || process.env.VITE_GROK_API_KEY;
 
   // Debug log to console (server side)
   if (!isSyllabus) {
@@ -3044,23 +3044,43 @@ if (!process.env.VERCEL) {
   // FastAPI server entry point
   const pyPort = process.env.PY_PORT || '8002';
   const pyHost = process.env.PY_HOST || '127.0.0.1';
-  // Start FastAPI with uvicorn using env variables
-  console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
-  const child = spawn('python', ['-m', 'uvicorn', 'server_py.main:app', '--host', pyHost, '--port', pyPort]);
-  child.stdout.on('data', (data) => {
-    const lines = data.toString().split('\n');
-    for (const line of lines) {
-      if (line.trim()) console.log(`[FastAPI] ${line.trim()}`);
-    }
-  });
-  child.stderr.on('data', (data) => {
-    const lines = data.toString().split('\n');
-    for (const line of lines) {
-      if (line.trim()) console.error(`[FastAPI stderr] ${line.trim()}`);
-    }
-  });
-  child.on('error', (err) => {
-    console.error(`[FastAPI error] Failed to start: ${err.message}`);
+
+  // Kill any process currently running on port 8002 to prevent address in use issues
+  const killCmd = process.platform === 'win32'
+    ? `powershell -Command "Stop-Process -Id (Get-NetTCPConnection -LocalPort ${pyPort} -ErrorAction SilentlyContinue).OwningProcess -Force -ErrorAction SilentlyContinue"`
+    : `fuser -k ${pyPort}/tcp || true`;
+
+  exec(killCmd, () => {
+    console.log(`🔧 Starting FastAPI on ${pyHost}:${pyPort}`);
+    const child = spawn('python', ['-m', 'uvicorn', 'server_py.main:app', '--host', pyHost, '--port', pyPort]);
+    
+    const cleanup = () => {
+      if (child) {
+        try {
+          child.kill('SIGTERM');
+        } catch (e) {}
+      }
+    };
+    process.on('exit', cleanup);
+    process.on('SIGINT', () => { cleanup(); process.exit(0); });
+    process.on('SIGTERM', () => { cleanup(); process.exit(0); });
+    process.on('USR2', () => { cleanup(); process.exit(0); }); // nodemon restart signal
+
+    child.stdout.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) console.log(`[FastAPI] ${line.trim()}`);
+      }
+    });
+    child.stderr.on('data', (data) => {
+      const lines = data.toString().split('\n');
+      for (const line of lines) {
+        if (line.trim()) console.error(`[FastAPI stderr] ${line.trim()}`);
+      }
+    });
+    child.on('error', (err) => {
+      console.error(`[FastAPI error] Failed to start: ${err.message}`);
+    });
   });
 }
 
