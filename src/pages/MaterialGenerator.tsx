@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown';
 import mermaid from 'mermaid';
 import { LoadingStatus } from '../components/LoadingStatus';
 import { API_BASE_URL, PY_API_BASE_URL } from '@/lib/api-config';
-
+import { Button } from '@/components/ui/button';
 
 const BACKEND_URL = PY_API_BASE_URL;
 const NODE_API_URL = `${API_BASE_URL}/api`;
