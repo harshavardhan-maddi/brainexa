@@ -189,7 +189,7 @@ export default function MaterialGenerator() {
         saveToHistory(subject, topicList, data.material || material);
         setIsAddedToLibrary(false);
       } else {
-        setError(data.error || 'Failed to generate material');
+        setError(data.detail || data.error || 'Failed to generate material');
       }
     } catch (e) {
       setError('Network error: Ensure backend is running.');
