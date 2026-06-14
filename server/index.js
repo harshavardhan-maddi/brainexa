@@ -2399,9 +2399,38 @@ app.get('/api/user-data/:userId', async (req, res) => {
     }
 
     if (userResult.rows.length === 0) {
+      // If user not found by ID or email, auto-create a user record in the local database
+      // since they are authenticated via Supabase in the frontend.
+      const defaultName = email ? email.split('@')[0] : 'Student';
+      const userEmail = email || `user_${userId}@supabase.mock`;
+      try {
+        await pool.query(
+          'INSERT INTO users (id, name, email, plan) VALUES ($1, $2, $3, $4)',
+          [userId, defaultName, userEmail, 'free']
+        );
+        console.log(`👤 Auto-created local database user for Supabase user: ${userEmail} (${userId})`);
+        userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+      } catch (insertErr) {
+        console.error('Failed to auto-create user in local database:', insertErr);
+      }
+    }
+
+    if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
     const user = userResult.rows[0];
+
+    // Sync premium status from payments history if they paid
+    try {
+      const paymentCheck = await pool.query("SELECT 1 FROM payments WHERE user_id = $1 AND status = 'success'", [user.id]);
+      if (paymentCheck.rows.length > 0 && user.plan !== 'premium') {
+        await pool.query("UPDATE users SET plan = 'premium' WHERE id = $1", [user.id]);
+        user.plan = 'premium';
+        console.log(`Synced premium plan for user ${user.email} from payments record`);
+      }
+    } catch (payErr) {
+      console.warn("Failed to check or sync payment status:", payErr.message);
+    }
 
     // Fetch related data (exact same as login)
     const subjects = await pool.query('SELECT * FROM subjects WHERE user_id = $1', [user.id]);

@@ -88,12 +88,24 @@ def is_subscribed(user_id: str) -> bool:
         return True  # Avoid blocking if DB connection fails locally
     cur = conn.cursor()
     try:
+        # 1. Check users table
         cur.execute('SELECT plan, role FROM users WHERE id = %s::uuid', (user_id,))
         row = cur.fetchone()
         if row:
             plan, role = row[0], row[1]
             if plan != 'free' or role == 'admin' or is_local:
                 return True
+        
+        # 2. Fallback: Check payments table for any successful transaction
+        try:
+            cur.execute("SELECT 1 FROM payments WHERE user_id = %s::uuid AND status = 'success'", (user_id,))
+            pay_row = cur.fetchone()
+            if pay_row:
+                print(f"Bypassing subscription restriction for user {user_id} based on payments history.")
+                return True
+        except Exception as pay_err:
+            print(f"Payments table check failed: {pay_err}")
+            
         return False
     except Exception as e:
         print(f"Error checking subscription in is_subscribed: {e}")
