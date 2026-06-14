@@ -302,13 +302,7 @@ export default function Chat() {
                   <p className="text-muted-foreground text-sm max-w-md mx-auto leading-relaxed">
                     History is tucked away. Text and **Visuals** are ready. Ask me anything about your syllabus and I'll generate images to help you understand better.
                   </p>
-                  <Button 
-                    onClick={() => navigate('/knowledge-base')}
-                    className="mt-6 gap-2 gradient-purple border-0 shadow-lg text-primary-foreground font-bold"
-                  >
-                    <BookOpen className="w-5 h-5" />
-                    Learn Topic in Knowledge Engine
-                  </Button>
+
                 </div>
               )}
 

@@ -2580,30 +2580,7 @@ io.on('connection', (socket) => {
   });
 });
 
-// Knowledge Engine Routes
-app.post('/api/knowledge/search', async (req, res) => {
-  const { topic, userId } = req.body;
-  try {
-    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/search`, {
-      method: 'POST',
-      headers: getPyHeaders(),
-      body: JSON.stringify({ topic })
-    });
-    const data = await pyRes.json();
 
-    // Log search
-    if (userId) {
-      await pool.query(
-        'INSERT INTO knowledge_logs (user_id, topic_name, search_query, links) VALUES ($1, $2, $3, $4)',
-        [userId, topic, topic, JSON.stringify(data.results)]
-      );
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 app.get('/api/diag-keys', (req, res) => {
   res.json({
@@ -2619,29 +2596,6 @@ app.get('/api/diag-keys', (req, res) => {
   });
 });
 
-app.post('/api/knowledge/direct-answer', async (req, res) => {
-  const { topic, userId } = req.body;
-  try {
-    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/direct-answer`, {
-      method: 'POST',
-      headers: getPyHeaders(),
-      body: JSON.stringify({ topic })
-    });
-    const data = await pyRes.json();
-
-    // Log interaction
-    if (userId && data.success) {
-      await pool.query(
-        'INSERT INTO knowledge_logs (user_id, topic_name, search_query, content, links) VALUES ($1, $2, $3, $4, $5)',
-        [userId, topic, topic, data.summary, JSON.stringify(data.sources)]
-      );
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 app.post('/api/materials/save-history', async (req, res) => {
   const { userId, subject, topics, material } = req.body;
@@ -2679,88 +2633,6 @@ app.get('/api/materials/history/:userId', async (req, res) => {
   }
 });
 
-app.post('/api/knowledge/content', async (req, res) => {
-  const { url, topic, userId } = req.body;
-  try {
-    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/content`, {
-      method: 'POST',
-      headers: getPyHeaders(),
-      body: JSON.stringify({ url, topic })
-    });
-    const data = await pyRes.json();
-
-    // Update log with content
-    if (userId && data.success) {
-      await pool.query(
-        'UPDATE knowledge_logs SET content = $1 WHERE user_id = $2 AND topic_name = $3',
-        [data.summary, userId, topic]
-      );
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/knowledge/questions', async (req, res) => {
-  const { topic, explanation, userId } = req.body;
-  try {
-    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/questions`, {
-      method: 'POST',
-      headers: getPyHeaders(),
-      body: JSON.stringify({ topic, explanation })
-    });
-    const data = await pyRes.json();
-
-    // Log learning session
-    if (userId && data.success) {
-      await pool.query(
-        'INSERT INTO learning_sessions (user_id, topic_name, explanation, questions) VALUES ($1, $2, $3, $4)',
-        [userId, topic, explanation, JSON.stringify(data.questions)]
-      );
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
-
-app.post('/api/knowledge/evaluate', async (req, res) => {
-  const { question, answer, correctInfo, topic, userId } = req.body;
-  try {
-    const pyRes = await fetch(`${PY_BACKEND_URL}/knowledge/evaluate`, {
-      method: 'POST',
-      headers: getPyHeaders(),
-      body: JSON.stringify({ question, answer, correct_info: correctInfo })
-    });
-    const data = await pyRes.json();
-
-    // Update progress
-    if (userId && data.success) {
-      const score = data.evaluation.score;
-      let status = 'Weak';
-      if (score >= 80) status = 'Completed';
-      else if (score >= 50) status = 'Needs Revision';
-
-      await pool.query(`
-        INSERT INTO topic_progress (user_id, topic_name, score, status, attempts)
-        VALUES ($1, $2, $3, $4, 1)
-        ON CONFLICT (user_id, topic_name)
-        DO UPDATE SET 
-          score = EXCLUDED.score,
-          status = EXCLUDED.status,
-          attempts = topic_progress.attempts + 1,
-          updated_at = CURRENT_TIMESTAMP
-      `, [userId, topic, score, status]);
-    }
-
-    res.json(data);
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
 // --- User Settings Endpoints ---
 
@@ -2952,18 +2824,6 @@ app.post('/api/user/reset-data', async (req, res) => {
 });
 
 
-app.get('/api/knowledge/progress/:userId', async (req, res) => {
-  const { userId } = req.params;
-  try {
-    const result = await pool.query(
-      'SELECT * FROM topic_progress WHERE user_id = $1 ORDER BY updated_at DESC',
-      [userId]
-    );
-    res.json({ success: true, progress: result.rows });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 app.post('/api/reports/fetch', async (req, res) => {
   const { userId, startDate, endDate } = req.body;
   try {

@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import json
 import time
 import base64
-from datetime import datetime
+import asyncio
 from typing import List, Dict, Optional
 from dotenv import load_dotenv
 
@@ -14,7 +14,7 @@ basedir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(basedir, "..", ".env")
 load_dotenv(dotenv_path=env_path, override=True)
 
-class KnowledgeEngine:
+class AIHelper:
     def __init__(self):
         self.serp_api_key = os.getenv("SERP_API_KEY")
         self.gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("VITE_GEMINI_API_KEY")
@@ -26,20 +26,22 @@ class KnowledgeEngine:
             os.makedirs(self.image_dir)
 
     async def generate_image(self, prompt: str, hf_key: Optional[str] = None) -> Optional[str]:
-        """Generates an image using Hugging Face and returns the filename."""
+        """Generates an image using Hugging Face concurrently and returns the filename."""
         active_hf_key = hf_key or self.hf_api_key
         if not active_hf_key:
             return None
             
         API_URL = "https://api-inference.huggingface.co/models/stabilityai/stable-diffusion-xl-base-1.0"
         headers = {"Authorization": f"Bearer {active_hf_key}"}
+        payload = {"inputs": f"Educational illustration: {prompt}, detailed, high quality, 4k"}
         
+        def run_hf_request():
+            return requests.post(API_URL, headers=headers, json=payload, timeout=40)
+
         try:
-            payload = {"inputs": f"Educational illustration: {prompt}, detailed, high quality, 4k"}
-            response = requests.post(API_URL, headers=headers, json=payload, timeout=40)
-            
+            response = await asyncio.to_thread(run_hf_request)
             if response.status_code == 200:
-                filename = f"img_{int(time.time())}.png"
+                filename = f"img_{int(time.time())}_{hash(prompt) % 10000}.png"
                 filepath = os.path.join(self.image_dir, filename)
                 with open(filepath, "wb") as f:
                     f.write(response.content)
@@ -59,9 +61,105 @@ class KnowledgeEngine:
                 return base64.b64encode(f.read()).decode('utf-8')
         return None
 
-    # ──────────────────────────────────────────────
-    # Module 1: Search + Retrieval
-    # ──────────────────────────────────────────────
+    async def call_ai(self, prompt: str, gemini_key: Optional[str] = None, groq_key: Optional[str] = None, hf_key: Optional[str] = None, **kwargs) -> str:
+        """Call AI completions asynchronously by running synchronous requests in background threads."""
+        active_groq_key = groq_key or self.grok_api_key
+        active_gemini_key = gemini_key or self.gemini_api_key
+        active_hf_key = hf_key or self.hf_api_key
+
+        # 1. Try Groq or xAI Grok depending on the key format
+        if active_groq_key:
+            is_xai = active_groq_key.startswith("xai-") or "xai" in active_groq_key.lower()
+            url = "https://api.x.ai/v1/chat/completions" if is_xai else "https://api.groq.com/openai/v1/chat/completions"
+            model = "grok-2-1212" if is_xai else "llama-3.3-70b-versatile"
+
+            headers = {
+                "Authorization": f"Bearer {active_groq_key}",
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            
+            def run_groq():
+                return requests.post(url, headers=headers, json=payload, timeout=30)
+                
+            try:
+                response = await asyncio.to_thread(run_groq)
+                if response.status_code == 200:
+                    data = response.json()
+                    return data["choices"][0]["message"]["content"]
+                else:
+                    print(f"Groq API Error: {response.status_code}")
+            except Exception as e:
+                print(f"Groq Exception: {e}")
+
+        # 2. Try Gemini Flash models - fallback loop
+        if active_gemini_key:
+            models = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-flash"]
+            for model in models:
+                url = (
+                    f"https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model}:generateContent?key={active_gemini_key}"
+                )
+                payload = {"contents": [{"parts": [{"text": prompt}]}]}
+                
+                def run_gemini():
+                    return requests.post(url, json=payload, timeout=30)
+                    
+                try:
+                    response = await asyncio.to_thread(run_gemini)
+                    data = response.json()
+                    if response.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
+                        return data["candidates"][0]["content"]["parts"][0]["text"]
+                    else:
+                        print(f"Gemini {model} API Error: {response.status_code} - {data.get('error', {}).get('message', '')}")
+                except Exception as e:
+                    print(f"Gemini {model} Exception: {e}")
+
+        # 3. Try Hugging Face completion fallback
+        if active_hf_key:
+            headers = {"Authorization": f"Bearer {active_hf_key}"}
+            hf_prompt = prompt.strip()
+            payload = {
+                "inputs": hf_prompt,
+                "parameters": {
+                    "max_new_tokens": 1024,
+                    "temperature": 0.6,
+                    "top_p": 0.9,
+                    "repetition_penalty": 1.1,
+                    "return_full_text": False,
+                },
+                "options": {
+                    "wait_for_model": True,
+                    "use_cache": True,
+                },
+            }
+            
+            def run_hf():
+                return requests.post(
+                    f"https://router.huggingface.co/hf-inference/models/{self.hf_model}",
+                    headers=headers,
+                    json=payload,
+                    timeout=60,
+                )
+                
+            try:
+                response = await asyncio.to_thread(run_hf)
+                data = response.json()
+                if isinstance(data, dict):
+                    if "error" in data:
+                        return f"Error: {data['error']}"
+                    if "generated_text" in data:
+                        return data["generated_text"]
+                if isinstance(data, list) and data:
+                    return data[0].get("generated_text", "")
+            except Exception as e:
+                print(f"Hugging Face Error: {e}")
+
+        return "Error: No AI API keys configured or service unavailable."
+
     async def optimize_search_query(self, student_request: str, **kwargs) -> str:
         """Use AI to turn a natural language request into a keyword-rich search query."""
         prompt = f"""
@@ -86,7 +184,7 @@ OUTPUT ONLY THE QUERY STRING.
             if results:
                 return results
 
-        # Free fallback – always works
+        # Free fallback
         return self._search_duckduckgo(optimized_query)
 
     def _search_serpapi(self, topic: str) -> List[Dict[str, str]]:
@@ -106,11 +204,6 @@ OUTPUT ONLY THE QUERY STRING.
             return []
 
     def _search_duckduckgo(self, topic: str) -> List[Dict[str, str]]:
-        """
-        Use DuckDuckGo's HTML search (no API key required).
-        Prioritizes educational sites but allows broader results.
-        """
-        # We search broadly but the AI will help pick the best ones later
         query = urllib.parse.quote(topic)
         url = f"https://html.duckduckgo.com/html/?q={query}"
 
@@ -138,7 +231,6 @@ OUTPUT ONLY THE QUERY STRING.
                 title = title_tag.get_text(strip=True)
                 href = title_tag.get("href", "")
 
-                # DuckDuckGo wraps redirect URLs – extract the real URL
                 if "uddg=" in href:
                     parsed = urllib.parse.urlparse(href)
                     qs = urllib.parse.parse_qs(parsed.query)
@@ -149,7 +241,6 @@ OUTPUT ONLY THE QUERY STRING.
                 if href and title:
                     results.append({"title": title, "link": href, "snippet": snippet})
 
-            # If DDG returned nothing useful, build AI-generated result cards
             if not results:
                 return self._generate_ai_result_cards(topic)
 
@@ -159,10 +250,6 @@ OUTPUT ONLY THE QUERY STRING.
             return self._generate_ai_result_cards(topic)
 
     def _generate_ai_result_cards(self, topic: str) -> List[Dict[str, str]]:
-        """
-        Last-resort fallback: return curated static links for the topic
-        so the UI always shows SOMETHING meaningful.
-        """
         encoded = urllib.parse.quote(topic)
         return [
             {
@@ -180,18 +267,9 @@ OUTPUT ONLY THE QUERY STRING.
                 "link": f"https://en.wikipedia.org/wiki/Special:Search?search={encoded}",
                 "snippet": f"Encyclopedia article covering the key concepts of {topic}.",
             },
-            {
-                "title": f"{topic} – Khan Academy",
-                "link": f"https://www.khanacademy.org/search?page_search_query={encoded}",
-                "snippet": f"Free video lessons and exercises to master {topic}.",
-            },
         ]
 
-    # ──────────────────────────────────────────────
-    # Module 2: Content Extraction
-    # ──────────────────────────────────────────────
     def extract_content(self, url: str) -> Dict[str, any]:
-        """Extract readable content from a URL using BeautifulSoup."""
         try:
             headers = {
                 "User-Agent": (
@@ -237,51 +315,41 @@ OUTPUT ONLY THE QUERY STRING.
             print(f"Extraction Error for {url}: {e}")
             return None
 
-    # ──────────────────────────────────────────────
-    # Module 2.5: Direct Answer Flow
-    # ──────────────────────────────────────────────
     async def get_direct_answer(self, topic: str, **kwargs) -> Dict:
         """One-shot flow: search, extract top results, and summarize."""
         print(f"Generating Direct Answer for: {topic}")
-        
-        # 1. Search
         results = await self.search_content(topic, **kwargs)
         if not results:
             return {"success": False, "error": "No search results found."}
         
-        # 2. Pick top 3 results for extraction
         top_results = results[:3]
         extracted_contents = []
         
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            futures = [executor.submit(self.extract_content, res['link']) for res in top_results]
-            for future in futures:
-                try:
-                    data = future.result()
-                    if data:
-                        extracted_contents.append(data)
-                except Exception as exc:
-                    print(f"Extraction generated an exception: {exc}")
-        
+        # Run synchronous extract_content calls concurrently in the thread pool
+        def fetch_url(res):
+            return self.extract_content(res['link'])
+
+        try:
+            tasks = [asyncio.to_thread(fetch_url, r) for r in top_results]
+            fetched = await asyncio.gather(*tasks, return_exceptions=True)
+            for item in fetched:
+                if item and not isinstance(item, Exception):
+                    extracted_contents.append(item)
+        except Exception as e:
+            print(f"Concurrent extraction error: {e}")
+
         if not extracted_contents:
-            # Fall back to just snippets if full extraction failed
             raw_text = "\n".join([f"{r['title']}: {r['snippet']}" for r in top_results])
         else:
             raw_text = self.filter_and_rank(extracted_contents)
             
-        # 3. Summarize with focus on student request
         summary = await self.summarize_content(raw_text, topic, **kwargs)
-        
         return {
             "success": True, 
             "summary": summary, 
             "sources": [{"title": r['title'], "link": r['link']} for r in top_results]
         }
 
-    # ──────────────────────────────────────────────
-    # Module 3: Content Filtering
-    # ──────────────────────────────────────────────
     def filter_and_rank(self, contents: List[Dict]) -> str:
         if not contents:
             return ""
@@ -295,110 +363,14 @@ OUTPUT ONLY THE QUERY STRING.
                 combined_text += "Code Examples:\n" + "\n".join(item["code_snippets"][:2]) + "\n"
         return combined_text
 
-    # ──────────────────────────────────────────────
-    # Module 4: AI call helper
-    # ──────────────────────────────────────────────
-    async def call_ai(self, prompt: str, gemini_key: Optional[str] = None, groq_key: Optional[str] = None, hf_key: Optional[str] = None, **kwargs) -> str:
-        active_groq_key = groq_key or self.grok_api_key
-        active_gemini_key = gemini_key or self.gemini_api_key
-        active_hf_key = hf_key or self.hf_api_key
-
-        # 1. Try Groq or xAI Grok depending on the key format
-        if active_groq_key:
-            is_xai = active_groq_key.startswith("xai-") or "xai" in active_groq_key.lower()
-            url = "https://api.x.ai/v1/chat/completions" if is_xai else "https://api.groq.com/openai/v1/chat/completions"
-            model = "grok-2-1212" if is_xai else "llama-3.3-70b-versatile"
-
-            headers = {
-                "Authorization": f"Bearer {active_groq_key}",
-                "Content-Type": "application/json",
-            }
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-            }
-            try:
-                response = requests.post(
-                    url,
-                    headers=headers,
-                    json=payload,
-                    timeout=30,
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    return data["choices"][0]["message"]["content"]
-                else:
-                    print(f"Groq API Error: {response.status_code}")
-            except Exception as e:
-                print(f"Groq Exception: {e}")
-
-        # 2. Try Gemini Flash models - fallback loop
-        if active_gemini_key:
-            models = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
-            for model in models:
-                url = (
-                    f"https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"{model}:generateContent?key={active_gemini_key}"
-                )
-                payload = {"contents": [{"parts": [{"text": prompt}]}]}
-                try:
-                    response = requests.post(url, json=payload, timeout=30)
-                    data = response.json()
-                    if response.status_code == 200 and "candidates" in data and len(data["candidates"]) > 0:
-                        return data["candidates"][0]["content"]["parts"][0]["text"]
-                    else:
-                        print(f"Gemini {model} API Error: {response.status_code} - {data.get('error', {}).get('message', '')}")
-                except Exception as e:
-                    print(f"Gemini {model} Exception: {e}")
-
-        if active_hf_key:
-            headers = {"Authorization": f"Bearer {active_hf_key}"}
-            hf_prompt = prompt.strip()
-            payload = {
-                "inputs": hf_prompt,
-                "parameters": {
-                    "max_new_tokens": 1024,
-                    "temperature": 0.6,
-                    "top_p": 0.9,
-                    "repetition_penalty": 1.1,
-                    "return_full_text": False,
-                },
-                "options": {
-                    "wait_for_model": True,
-                    "use_cache": True,
-                },
-            }
-            try:
-                response = requests.post(
-                    f"https://router.huggingface.co/hf-inference/models/{self.hf_model}",
-                    headers=headers,
-                    json=payload,
-                    timeout=60,
-                )
-                data = response.json()
-                if isinstance(data, dict):
-                    if "error" in data:
-                        return f"Error: {data['error']}"
-                    if "generated_text" in data:
-                        return data["generated_text"]
-                if isinstance(data, list) and data:
-                    return data[0].get("generated_text", "")
-            except Exception as e:
-                print(f"Hugging Face Error: {e}")
-
-        return "Error: No AI API keys configured or service unavailable."
-
-    # ──────────────────────────────────────────────
-    # Module 4: AI Summarisation
-    # ──────────────────────────────────────────────
     async def summarize_content(self, raw_content: str, topic: str, **kwargs) -> str:
         prompt = f"""
-You are the Brainexa AI Knowledge Engine, a world-class analytical Study Mentor. 
+You are the Brainexa AI Mentor, a world-class analytical Study Mentor. 
 A student is deeply exploring the topic: "{topic}"
 
-Your goal is to provide a "Superful" (extremely detailed, insightful, and authoritative) explanation based on the retrieved educational content provided below. 
+Your goal is to provide an extremely detailed, insightful, and authoritative explanation based on the retrieved educational content provided below. 
 
-GUIDELINES for a "Superful" Response:
+GUIDELINES for a Response:
 1. **Analytical Depth**: Do not just summarize. Analyze the "why" and "how". Break down complex mechanisms.
 2. **Interlinking**: Connect this topic to related concepts. How does it fit into the broader subject?
 3. **Multi-dimensional Breakdown**: 
@@ -421,93 +393,28 @@ Provide the most accurate and high-precision response possible:
 """
         return await self.call_ai(prompt, **kwargs)
 
-    # ──────────────────────────────────────────────
-    # Module 5: Active Learning Questions
-    # ──────────────────────────────────────────────
-    async def generate_questions(self, topic: str, explanation: str, **kwargs) -> List[Dict]:
-        prompt = f"""
-Generate 3-5 conceptual questions based on the topic "{topic}" and the explanation below to test understanding.
-Include a mix of MCQ and conceptual short answers.
-
-EXPLANATION:
-{explanation}
-
-Return ONLY a JSON array with the following structure:
-[
-    {{
-        "type": "mcq",
-        "question": "...",
-        "options": ["A", "B", "C", "D"],
-        "correct_answer": "...",
-        "explanation": "..."
-    }},
-    {{
-        "type": "short_answer",
-        "question": "...",
-        "correct_info": "...",
-        "explanation": "..."
-    }}
-]
-"""
-        response = await self.call_ai(prompt, **kwargs)
-        try:
-            clean_res = response.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_res)
-        except Exception:
-            return []
-
-    # ──────────────────────────────────────────────
-    # Module 6: Answer Evaluation
-    # ──────────────────────────────────────────────
-    async def evaluate_answer(self, question: str, student_answer: str, correct_info: str, **kwargs) -> Dict:
-        prompt = f"""
-Evaluate the student's answer based on correctness, clarity, and understanding.
-
-Question: {question}
-Student Answer: {student_answer}
-Correct Information/Reference: {correct_info}
-
-Return ONLY a JSON object:
-{{
-    "score": 0-100,
-    "feedback": "...",
-    "correct": true/false
-}}
-"""
-        response = await self.call_ai(prompt, **kwargs)
-        try:
-            clean_res = response.replace("```json", "").replace("```", "").strip()
-            return json.loads(clean_res)
-        except Exception:
-            return {"score": 0, "feedback": "Evaluation error", "correct": False}
-
-    # ──────────────────────────────────────────────
-    # Module 7: Study Material Generation
-    # ──────────────────────────────────────────────
-    def determine_performance(self, quiz_results: List[Dict]) -> str:
-        """Determine performance category based on average quiz score.
-        Returns one of: 'Perfect', 'High', 'Better', 'Weak'.
-        """
-        if not quiz_results:
-            return "Weak"
-        total = sum(r.get('score', 0) for r in quiz_results)
-        avg = total / len(quiz_results)
-        if avg >= 90:
-            return "Perfect"
-        if avg >= 75:
-            return "High"
-        if avg >= 50:
-            return "Better"
-        return "Weak"
-
-    async def generate_study_material(self, subject: str, topics: List[str], custom_instructions: Optional[str] = None, **kwargs) -> str:
+    async def generate_study_material(self, subject: str, topics: List[str], custom_instructions: Optional[str] = None, depth: str = "detailed", **kwargs) -> str:
         topics_str = ", ".join(topics)
         custom_block = f"\n========================\nCUSTOM STUDENT REQUIREMENTS\n========================\n{custom_instructions}\n" if custom_instructions else ""
         
+        # Adjust rules based on user-selected depth
+        depth_instruction = ""
+        if depth == "detailed":
+            depth_instruction = "Rule: Provide very detailed, simple, step-by-step explanations with plenty of examples, analogies, and deep background context. Make it comprehensive."
+        elif depth == "medium":
+            depth_instruction = "Rule: Provide clear, structured explanations with standard details, practical examples, and clear definitions. Suitable for standard exam prep."
+        elif depth == "normal":
+            depth_instruction = "Rule: Provide a concise, highly focused overview of the topics. Highlight only the core definitions, key takeaways, and critical equations/points."
+
         prompt = f"""
 You are an expert academic content generator and structured output system.
 Your job is to generate high-quality study material AND structured metadata for saving in history.
 {custom_block}
+
+========================
+DEPTH PREFERENCE
+========================
+{depth_instruction}
 
 ========================
 OUTPUT FORMAT (STRICT JSON)
@@ -517,7 +424,7 @@ Return output ONLY in this JSON format. IMPORTANT: All strings must be valid JSO
 {{
   "topic_name": "{topics_str}",
   "subject": "{subject}",
-  "difficulty_level": "beginner",
+  "difficulty_level": "{'beginner' if depth == 'detailed' else 'medium' if depth == 'medium' else 'advanced'}",
   "created_at": "{self._get_current_date()}",
   "preview": "A short summary...",
   "index": [
@@ -540,7 +447,7 @@ CONTENT RULES
 2. Structure (inside "content"):
 For each topic include:
 A. Definition (2–3 lines)
-B. Detailed Explanation
+B. Detailed Explanation (adjusted to the Depth Preference rules above)
 C. Key Points (bullets)
 D. Diagram Explanation (describe in words if needed)
 E. Example (if applicable)
@@ -617,4 +524,3 @@ Subject: {subject}
     def _get_current_date(self) -> str:
         from datetime import datetime
         return datetime.now().strftime("%Y-%m-%d")
-

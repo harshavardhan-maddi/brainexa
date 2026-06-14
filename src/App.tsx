@@ -25,7 +25,6 @@ const Subscription = lazy(() => import("./pages/Subscription"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const NotFound = lazy(() => import("./pages/NotFound"));
-const KnowledgeBase = lazy(() => import("./pages/KnowledgeBase"));
 const MaterialGenerator = lazy(() => import("./pages/MaterialGenerator"));
 const Help = lazy(() => import("./pages/Help"));
 const Reports = lazy(() => import("./pages/Reports"));
@@ -147,7 +146,6 @@ const App = () => {
                   <Route path="/chat" element={<SubscribedRoute><Chat /></SubscribedRoute>} />
                   <Route path="/quiz" element={<SubscribedRoute><Quiz /></SubscribedRoute>} />
                   <Route path="/materials" element={<SubscribedRoute><MaterialsLibrary /></SubscribedRoute>} />
-                  <Route path="/knowledge-base" element={<SubscribedRoute><KnowledgeBase /></SubscribedRoute>} />
                   <Route path="/material-generator" element={<SubscribedRoute><MaterialGenerator /></SubscribedRoute>} />
                   <Route path="/subjects" element={<SubscribedRoute><Subjects /></SubscribedRoute>} />
                   <Route path="/study-plan" element={<ProtectedRoute><StudyPlan /></ProtectedRoute>} />

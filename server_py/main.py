@@ -54,16 +54,16 @@ basedir = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(basedir, "..", ".env")
 load_dotenv(dotenv_path=env_path, override=True)
 
-print("[STARTUP] Loading KnowledgeEngine...")
+print("[STARTUP] Loading AIHelper...")
 try:
     try:
-        from .knowledge_engine import KnowledgeEngine
+        from .ai_helper import AIHelper
     except ImportError:
-        from knowledge_engine import KnowledgeEngine
-    engine = KnowledgeEngine()
-    print("[STARTUP] KnowledgeEngine loaded.")
+        from ai_helper import AIHelper
+    engine = AIHelper()
+    print("[STARTUP] AIHelper loaded.")
 except Exception as e:
-    print(f"[CRITICAL] KnowledgeEngine failed: {e}")
+    print(f"[CRITICAL] AIHelper failed: {e}")
     import traceback
     print(traceback.format_exc())
     raise
@@ -72,40 +72,10 @@ except Exception as e:
 async def root():
     return {"status": "online", "service": "Brainexa Python Backend"}
 
-@app.post("/knowledge/search")
-async def search_knowledge(request: Request, topic: str = Body(..., embed=True)):
-    results = await engine.search_content(topic, **get_key_overrides(request))
-    return {"success": True, "results": results}
-
 @app.post("/knowledge/direct-answer")
 async def direct_answer(request: Request, topic: str = Body(..., embed=True)):
     data = await engine.get_direct_answer(topic, **get_key_overrides(request))
     return data
-
-@app.post("/knowledge/content")
-async def extract_knowledge(request: Request, url: str = Body(..., embed=True), topic: str = Body(..., embed=True)):
-    data = engine.extract_content(url)
-    if not data:
-        return {"success": False, "error": "Failed to extract content"}
-    
-    raw_text = engine.filter_and_rank([data])
-    summary = await engine.summarize_content(raw_text, topic, **get_key_overrides(request))
-    return {"success": True, "summary": summary, "data": data}
-
-@app.post("/knowledge/questions")
-async def generate_questions(request: Request, topic: str = Body(..., embed=True), explanation: str = Body(..., embed=True)):
-    questions = await engine.generate_questions(topic, explanation, **get_key_overrides(request))
-    return {"success": True, "questions": questions}
-
-@app.post("/knowledge/evaluate")
-async def evaluate_answer(
-    request: Request,
-    question: str = Body(..., embed=True), 
-    answer: str = Body(..., embed=True), 
-    correct_info: str = Body(..., embed=True)
-):
-    evaluation = await engine.evaluate_answer(question, answer, correct_info, **get_key_overrides(request))
-    return {"success": True, "evaluation": evaluation}
 
 # Helper to check subscription status
 def is_subscribed(user_id: str) -> bool:
@@ -129,36 +99,24 @@ async def generate_material(
     subject: str = Body(..., embed=True),
     topics: list[str] = Body(..., embed=True),
     customInstructions: Optional[str] = Body(None, embed=True),
-    performance: str = Body(None, embed=True),
+    depth: str = Body("detailed", embed=True),
     userId: Optional[str] = Body(None, embed=True)
 ):
     # Only subscribed users can generate material
     if userId is None or not is_subscribed(userId):
         raise HTTPException(status_code=403, detail="Access denied: subscription required")
-    # Determine performance if not supplied and userId provided
-    if not performance and userId:
-        conn = get_db_connection()
-        if conn:
-            cur = conn.cursor()
-            cur.execute('SELECT score FROM quiz_results WHERE user_id = %s::uuid', (userId,))
-            rows = cur.fetchall()
-            quiz_results = [{'score': r[0]} for r in rows]
-            cur.close()
-            conn.close()
-            performance = engine.determine_performance(quiz_results)
-        else:
-            performance = "Weak"
+
     # Generate material
     keys = get_key_overrides(request)
-    content = await engine.generate_study_material(subject, topics, customInstructions, **keys)
+    content = await engine.generate_study_material(subject, topics, customInstructions, depth=depth, **keys)
     if content and not content.startswith("Error:"):
         try:
             import json
             import re
+            import asyncio
             # Clean possible markdown code blocks
             clean_json = content.replace("```json", "").replace("```", "").strip()
             
-            # Robust JSON Repair logic (already present)
             try:
                 material_data = json.loads(clean_json)
             except json.JSONDecodeError:
@@ -167,40 +125,43 @@ async def generate_material(
                 repaired_json = re.sub(r'":\s*"([^"]*?)"', fix_newlines, clean_json, flags=re.DOTALL)
                 material_data = json.loads(repaired_json)
 
-            # Process Visual Tags
+            # Process Visual Tags concurrently using asyncio.gather to make it faster
             if "content" in material_data:
                 content_str = material_data["content"]
-                # Flexible regex to catch variations like ![VISUAL:prompt] or ![VISUAL: prompt]
                 visual_tags = re.findall(r'!\[VISUAL:\s*(.*?)\]', content_str)
                 
-                print(f"DEBUG: Found {len(visual_tags)} visual tags in content.")
+                print(f"DEBUG: Found {len(visual_tags)} visual tags in content. Processing concurrently.")
                 
-                for prompt in visual_tags:
-                    print(f"DEBUG: Generating image for prompt: {prompt}")
-                    # Generate the image
+                async def fetch_and_encode_image(prompt):
                     filename = await engine.generate_image(prompt, hf_key=keys.get("hf_key"))
                     if filename:
-                        # Convert to Base64 to bypass all port/CORS issues
                         b64_data = engine.get_image_base64(filename)
                         if b64_data:
-                            image_url = f"data:image/png;base64,{b64_data}"
-                            content_str = content_str.replace(f"![VISUAL: {prompt}]", f"![{prompt}]({image_url})")
-                            content_str = content_str.replace(f"![VISUAL:{prompt}]", f"![{prompt}]({image_url})")
-                            print(f"DEBUG: Image embedded as Base64.")
+                            return prompt, f"data:image/png;base64,{b64_data}"
+                    return prompt, None
+
+                # Process all visual tag generations in parallel
+                tasks = [fetch_and_encode_image(tag) for tag in visual_tags]
+                results = await asyncio.gather(*tasks)
+
+                for prompt, image_url in results:
+                    if image_url:
+                        content_str = content_str.replace(f"![VISUAL: {prompt}]", f"![{prompt}]({image_url})")
+                        content_str = content_str.replace(f"![VISUAL:{prompt}]", f"![{prompt}]({image_url})")
+                        print(f"DEBUG: Concurrent image embedded.")
                     else:
                         print(f"DEBUG: Image generation failed for: {prompt}. Falling back to Unsplash.")
-                        # Fallback to a high-quality educational image from Unsplash
                         fallback_url = f"https://source.unsplash.com/featured/?{urllib.parse.quote(prompt)},education"
                         content_str = content_str.replace(f"![VISUAL: {prompt}]", f"![{prompt}]({fallback_url})")
                         content_str = content_str.replace(f"![VISUAL:{prompt}]", f"![{prompt}]({fallback_url})")
                 
                 material_data["content"] = content_str
 
-            return {"success": True, "material": material_data, "performance": performance}
+            return {"success": True, "material": material_data, "depth": depth}
         except Exception as e:
             print(f"JSON Parse Error: {e}")
-            return {"success": True, "content": content, "performance": performance}
-    return {"success": False, "error": content, "performance": performance if performance else None}
+            return {"success": True, "content": content, "depth": depth}
+    return {"success": False, "error": content, "depth": depth}
 
 @app.post("/knowledge/regenerate-plan")
 async def regenerate_plan(
@@ -233,24 +194,7 @@ async def regenerate_plan(
 
 # ... existing routes ...
 
-# New endpoint: Get performance status for a user
-@app.post("/knowledge/performance")
-async def get_performance(
-    userId: str = Body(..., embed=True)
-):
-    conn = get_db_connection()
-    if not conn:
-        raise HTTPException(status_code=500, detail="Database connection failed")
-    cur = conn.cursor()
-    try:
-        cur.execute('SELECT score FROM quiz_results WHERE user_id = %s::uuid', (userId,))
-        rows = cur.fetchall()
-        quiz_results = [{'score': r[0]} for r in rows]
-        performance = engine.determine_performance(quiz_results)
-        return {"success": True, "performance": performance}
-    finally:
-        cur.close()
-        conn.close()
+
 
 
 # Database Connection

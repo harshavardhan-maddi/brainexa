@@ -32,7 +32,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       premium: false
     },
     { path: "/chat", label: "AI Mentor", icon: MessageSquare, premium: true },
-    { path: "/knowledge-base", label: "Knowledge Engine", icon: BookOpen, premium: true },
     { path: "/quiz", label: "Quizzes", icon: GraduationCap, premium: true },
     { path: "/material-generator", label: "Material Generator", icon: BookOpen, premium: true },
     { path: "/materials", label: "Read Material", icon: BookOpen, premium: true },

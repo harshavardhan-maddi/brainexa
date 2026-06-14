@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Mail, LayoutDashboard, FileText, BookOpen, GraduationCap, MessageSquare, Settings as SettingsIcon, ArrowLeft, Search, RefreshCw, CheckCircle2, User, Check, Type } from "lucide-react";
 
 // Define module info
-type ModuleId = "dashboard" | "reports" | "study-plan" | "chat" | "knowledge-base" | "quiz" | "material-generator" | "subjects";
+type ModuleId = "dashboard" | "reports" | "study-plan" | "chat" | "quiz" | "material-generator" | "subjects";
 
 interface ModuleInfo {
   id: ModuleId;
@@ -64,15 +64,7 @@ const modules: ModuleInfo[] = [
     steps: ["Type your question in the chat.", "The AI Mentor analyzes your context.", "Receive instant, accurate guidance."],
     color: "text-indigo-500",
   },
-  { 
-    id: "knowledge-base",
-    path: "/knowledge-base", 
-    label: "Knowledge Engine", 
-    icon: Search, 
-    description: "Search the knowledge base for concepts and explanations.",
-    steps: ["Search for any topic or concept.", "Review curated explanations and resources.", "Deep dive into specific subjects."],
-    color: "text-amber-500",
-  },
+
   { 
     id: "quiz",
     path: "/quiz", 
@@ -183,33 +175,7 @@ const StudyPlanAnimation = () => (
   </div>
 );
 
-const KnowledgeEngineAnimation = () => (
-  <div className="w-full h-full flex flex-col items-center justify-start pt-12 gap-6">
-    <div className="w-56 bg-card border-2 border-amber-500/50 rounded-full h-10 flex items-center px-4 gap-2 shadow-sm">
-      <Search className="w-4 h-4 text-amber-500" />
-      <motion.div
-        initial={{ width: 0, opacity: 0 }}
-        animate={{ width: "80%", opacity: 1 }}
-        transition={{ duration: 1.5, repeat: Infinity, repeatType: "reverse", repeatDelay: 2 }}
-        className="h-2 bg-muted-foreground/30 rounded-full"
-      />
-    </div>
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 1.5, duration: 0.5, repeat: Infinity, repeatType: "reverse", repeatDelay: 2 }}
-      className="w-64 bg-card border border-border p-4 rounded-xl shadow-premium space-y-3"
-    >
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-amber-500/20" />
-        <div className="space-y-1 flex-1">
-          <div className="h-2 w-full bg-muted rounded-full" />
-          <div className="h-2 w-2/3 bg-muted rounded-full" />
-        </div>
-      </div>
-    </motion.div>
-  </div>
-);
+
 
 const QuizAnimation = () => (
   <div className="w-full h-full flex flex-col items-center justify-center">
@@ -327,7 +293,6 @@ const AbstractAnimation = ({ id }: { id: ModuleId }) => {
         {id === "dashboard" && <DashboardAnimation />}
         {id === "chat" && <ChatAnimation />}
         {id === "study-plan" && <StudyPlanAnimation />}
-        {id === "knowledge-base" && <KnowledgeEngineAnimation />}
         {id === "quiz" && <QuizAnimation />}
         {id === "material-generator" && <MaterialGeneratorAnimation />}
         {id === "reports" && <ReportsAnimation />}

@@ -167,13 +167,6 @@ export default function Dashboard() {
                    <BookOpen className="w-4 h-4 shadow-sm" />
                    <span>Read Material</span>
                  </Button>
-                 <Button 
-                   onClick={() => navigate('/knowledge-base')}
-                   className="rounded-xl h-12 px-6 gap-2 bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-600 hover:to-indigo-700 text-white font-black uppercase tracking-widest text-[10px] shadow-lg shadow-purple-200/50 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                 >
-                   <Brain className="w-4 h-4 shadow-sm" />
-                   <span>Knowledge Engine</span>
-                 </Button>
                </div>
              )}
 

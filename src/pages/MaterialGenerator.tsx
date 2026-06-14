@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   BookOpen, GraduationCap, Zap, CheckCircle, AlertTriangle, 
   Sparkles, Loader2, Printer, History, Clock, ChevronRight,
-  ListOrdered, Layout, HelpCircle, FileText, FastForward
+  ListOrdered, Layout, HelpCircle, FileText, FastForward, ArrowLeft
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import mermaid from 'mermaid';
@@ -78,9 +78,7 @@ export default function MaterialGenerator() {
   const [topics, setTopics] = useState('');
   const [customInstructions, setCustomInstructions] = useState('');
   const [material, setMaterial] = useState<StructuredMaterial | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [performanceStatus, setPerformanceStatus] = useState<string | null>(null);
+  const [depth, setDepth] = useState<'detailed' | 'medium' | 'normal'>('detailed');
   const [error, setError] = useState('');
   const [isGenerated, setIsGenerated] = useState(false);
   const [history, setHistory] = useState<MaterialHistoryItem[]>([]);
@@ -89,29 +87,10 @@ export default function MaterialGenerator() {
   const [isAddedToLibrary, setIsAddedToLibrary] = useState(false);
 
   useEffect(() => {
-    fetchPerformance();
     fetchHistory();
   }, [user]);
 
-  const fetchPerformance = async () => {
-    if (!user?.id) return;
-    setStatusLoading(true);
-    try {
-      const res = await fetch(`${BACKEND_URL}/knowledge/performance`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setPerformanceStatus(data.performance);
-      }
-    } catch (e) {
-      console.error('Failed to fetch performance', e);
-    } finally {
-      setStatusLoading(false);
-    }
-  };
+  const [loading, setLoading] = useState(false);
 
   const fetchHistory = async () => {
     if (!user?.id) return;
@@ -184,7 +163,7 @@ export default function MaterialGenerator() {
           topics: topicList,
           customInstructions,
           userId: user?.id,
-          performance: performanceStatus
+          depth: depth
         }),
       });
       const data = await res.json();
@@ -219,20 +198,21 @@ export default function MaterialGenerator() {
     }
   };
 
-  const getStatusConfig = (status: string | null) => {
-    switch (status) {
-      case 'Perfect': return { color: 'text-green-500', bg: 'bg-green-500/10', icon: CheckCircle, label: 'Perfect' };
-      case 'High': return { color: 'text-blue-500', bg: 'bg-blue-500/10', icon: Zap, label: 'High' };
-      case 'Better': return { color: 'text-yellow-500', bg: 'bg-yellow-500/10', icon: Sparkles, label: 'Better' };
-      case 'Weak': return { color: 'text-red-500', bg: 'bg-red-500/10', icon: AlertTriangle, label: 'Weak' };
-      default: return { color: 'text-muted-foreground', bg: 'bg-muted/10', icon: GraduationCap, label: 'Calculating...' };
-    }
-  };
 
-  const status = getStatusConfig(performanceStatus);
 
   return (
     <div className="p-4 lg:p-8 max-w-5xl mx-auto space-y-8 animate-in fade-in duration-700">
+      {/* Back Button */}
+      <div className="no-print mb-4 flex items-center">
+        <Button 
+          variant="ghost" 
+          className="rounded-full border border-border/50 hover:bg-secondary text-muted-foreground hover:text-foreground text-xs font-bold gap-2"
+          onClick={() => navigate('/dashboard')}
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Back
+        </Button>
+      </div>
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -335,29 +315,7 @@ export default function MaterialGenerator() {
         </section>
       )}
 
-      {!isGenerated && (
-        <section className="relative overflow-hidden rounded-3xl border border-border bg-card p-6 shadow-premium backdrop-blur-sm no-print">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-primary/10 blur-3xl rounded-full" />
-          <div className="flex items-center gap-4">
-            <div className={`p-3 rounded-2xl ${status.bg} ${status.color}`}>
-              <status.icon className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-sm font-black uppercase tracking-widest text-muted-foreground">Performance Analyzer</h2>
-              <div className="flex items-center gap-2 mt-1">
-                <span className={`text-xl font-bold ${status.color}`}>
-                  {statusLoading ? 'Analyzing...' : status.label}
-                </span>
-                {!statusLoading && (
-                  <span className="text-xs text-muted-foreground font-medium">
-                    Based on your previous quiz results
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
+
 
       {!isGenerated ? (
         <section className="space-y-6 no-print">
@@ -390,11 +348,30 @@ export default function MaterialGenerator() {
                 className="w-full px-4 py-3 rounded-2xl border border-border bg-background focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm outline-none h-24 resize-none"
               />
             </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-foreground">Study Material Depth</label>
+              <div className="grid grid-cols-3 gap-4">
+                {(['detailed', 'medium', 'normal'] as const).map((level) => (
+                  <button
+                    key={level}
+                    type="button"
+                    onClick={() => setDepth(level)}
+                    className={`px-4 py-3 rounded-2xl border text-sm font-bold uppercase tracking-wider transition-all duration-300 ${
+                      depth === level
+                        ? 'bg-primary text-primary-foreground border-primary shadow-md scale-[1.02]'
+                        : 'bg-card text-muted-foreground border-border hover:bg-secondary/50'
+                    }`}
+                  >
+                    {level === 'detailed' ? '📚 Detailed' : level === 'medium' ? '⚡ Medium' : '🎯 Normal'}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
             <button
               onClick={generate}
-              disabled={loading || !subject || !performanceStatus}
+              disabled={loading || !subject}
               className="group relative w-full inline-flex items-center justify-center gap-2 px-8 py-4 bg-primary text-primary-foreground font-black rounded-2xl shadow-lg hover:shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
             >
               <div className="absolute inset-x-0 bottom-0 h-1 bg-white/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />

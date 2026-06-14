@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 // Define module info
-type ModuleId = "dashboard" | "reports" | "study-plan" | "chat" | "knowledge-base" | "quiz" | "material-generator" | "subjects";
+type ModuleId = "dashboard" | "reports" | "study-plan" | "chat" | "quiz" | "material-generator" | "subjects";
 
 interface ModuleInfo {
   id: ModuleId;
@@ -51,15 +51,7 @@ const modules: ModuleInfo[] = [
     bgGradient: "from-indigo-500/20 to-indigo-500/5",
     position: { top: "8%", left: "50%", mobileOrder: 2 }
   },
-  { 
-    id: "knowledge-base",
-    path: "/knowledge-base", 
-    label: "Knowledge Engine", 
-    icon: Search, 
-    color: "text-amber-400",
-    bgGradient: "from-amber-500/20 to-amber-500/5",
-    position: { top: "15%", left: "80%", mobileOrder: 3 }
-  },
+
   { 
     id: "quiz",
     path: "/quiz", 
@@ -212,42 +204,7 @@ const StudyPlanVisual = () => (
   </div>
 );
 
-const KnowledgeEngineVisual = () => (
-  <div className="w-full h-full flex flex-col items-center justify-start pt-20 gap-8">
-    <motion.div 
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="w-80 bg-card border-2 border-amber-500 rounded-full h-16 flex items-center px-6 gap-4 shadow-[0_0_30px_rgba(245,158,11,0.2)]"
-    >
-      <Search className="w-6 h-6 text-amber-500" />
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: "70%" }}
-        transition={{ duration: 1.5, delay: 0.5, ease: "linear" }}
-        className="h-3 bg-foreground rounded-full"
-      />
-    </motion.div>
-    <div className="flex flex-col gap-4">
-      {[0, 1].map((i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 2.5 + (i * 0.5), duration: 0.5 }}
-          className="w-96 bg-card border border-amber-500/20 p-6 rounded-2xl shadow-premium flex gap-4"
-        >
-          <div className="w-12 h-12 rounded-xl bg-amber-500/20 animate-pulse flex-shrink-0" />
-          <div className="space-y-3 flex-1 pt-1">
-            <div className="h-3 w-full bg-muted rounded-full" />
-            <div className="h-3 w-5/6 bg-muted rounded-full" />
-            <div className="h-3 w-4/6 bg-muted rounded-full" />
-          </div>
-        </motion.div>
-      ))}
-    </div>
-  </div>
-);
+
 
 const QuizVisual = () => (
   <div className="w-full h-full flex flex-col items-center justify-center">
@@ -391,7 +348,6 @@ const VisualizerMap: Record<ModuleId, React.FC> = {
   dashboard: DashboardVisual,
   chat: ChatVisual,
   "study-plan": StudyPlanVisual,
-  "knowledge-base": KnowledgeEngineVisual,
   quiz: QuizVisual,
   "material-generator": MaterialGeneratorVisual,
   reports: ReportsVisual,
@@ -569,7 +525,7 @@ export default function Home() {
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-indigo-500">Ambitious Mind.</span>
             </h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Brainexa isn't just another study tool. It is an elite, interconnected ecosystem designed to hyper-accelerate your learning process. From dynamic study plans that adapt to your schedule, to a Knowledge Engine that instantly retrieves complex answers, every module is built to save you time and maximize retention.
+              Brainexa isn't just another study tool. It is an elite, interconnected ecosystem designed to hyper-accelerate your learning process. From dynamic study plans that adapt to your schedule, to an AI Mentor that instantly clarifies complex concepts, every module is built to save you time and maximize retention.
             </p>
             <ul className="space-y-4">
               {[
