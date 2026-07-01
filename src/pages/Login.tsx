@@ -19,7 +19,9 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
-      navigate(user.plan === "free" ? "/subscription" : "/home");
+      const createdTime = user.createdAt ? new Date(user.createdAt).getTime() : 0;
+      const isTrial = user.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+      navigate(user.plan === "free" && !isTrial ? "/subscription" : "/home");
     }
   }, [user, navigate]);
 
@@ -76,7 +78,9 @@ export default function Login() {
 
       await login(userObj, userData);
       toast.success("Welcome back!");
-      navigate(userObj.plan === "free" ? "/subscription" : "/home");
+      const createdTime = userObj.createdAt ? new Date(userObj.createdAt).getTime() : 0;
+      const isTrial = userObj.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+      navigate(userObj.plan === "free" && !isTrial ? "/subscription" : "/home");
     } catch (err: any) {
       setError(err.message || "Invalid email or password.");
     } finally {

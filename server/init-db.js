@@ -133,6 +133,17 @@ const initDB = async () => {
       );
     `);
 
+    // Feedback table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        rating INTEGER NOT NULL,
+        comment TEXT,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
     // Unified Learning Materials table
     await pool.query(`
       CREATE TABLE IF NOT EXISTS learning_materials (
@@ -273,10 +284,14 @@ const initDB = async () => {
 
     // 5. Seed default admin if needed or update their password/role
     log('👤 Seeding default admin...');
-    const adminEmail = 'admin@brainexa.com';
-    const adminPassword = 'Brainexa@admin';
+    const adminEmail = '25475A4603';
+    const adminPassword = '25475A4603';
     const adminName = 'System Administrator';
     const hashedAdminPassword = await bcrypt.hash(adminPassword, 10);
+
+    // Update old admin email to new ID if it exists
+    await pool.query('UPDATE users SET email = $1 WHERE email = $2', [adminEmail, 'admin@brainexa.com']);
+
     const existingAdmin = await pool.query('SELECT id FROM users WHERE email = $1', [adminEmail]);
     if (existingAdmin.rows.length > 0) {
       await pool.query(

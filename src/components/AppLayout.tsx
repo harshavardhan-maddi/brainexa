@@ -1,7 +1,9 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "@/lib/store";
 import { BookOpen, LayoutDashboard, MessageSquare, GraduationCap, CreditCard, FileText, LogOut, Menu, X, User, Settings as SettingsIcon, HelpCircle as HelpIcon, Home as HomeIcon } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import LoginChoiceModal from "./LoginChoiceModal";
+import ExperienceFeedbackModal from "./ExperienceFeedbackModal";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,14 +41,84 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     { path: "/settings", label: "Settings", icon: SettingsIcon, premium: false },
   ];
 
+  const createdTime = user?.createdAt ? new Date(user.createdAt).getTime() : 0;
+  const isTrialActive = user?.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+
   const filteredNavItems = navItems.filter(item => {
     if (user?.plan === "premium") return item.path !== "/subscription"; // Hide subscription if already premium
+    if (isTrialActive) return true; // Show all premium items in trial
     return !item.premium || item.path === "/subscription" || item.path === "/study-plan";
   });
 
   const handleLogout = async () => {
     await logout();
     navigate("/");
+  };
+
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [feedbackModalOpen, setFeedbackModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!user || user.plan !== "free") {
+      setLoginModalOpen(false);
+      setFeedbackModalOpen(false);
+      return;
+    }
+
+    const userId = user.id;
+    const hasSeenLoginChoice = sessionStorage.getItem(`brainexa_seen_login_choice_${userId}`) === "true";
+
+    if (!hasSeenLoginChoice) {
+      setLoginModalOpen(true);
+      setFeedbackModalOpen(false);
+      return;
+    } else {
+      setLoginModalOpen(false);
+    }
+
+    // Check if trial is active
+    const trialCreated = user.createdAt ? new Date(user.createdAt).getTime() : 0;
+    if (!trialCreated) return;
+
+    const trialActive = (new Date().getTime() - trialCreated) < 3 * 24 * 60 * 60 * 1000;
+    if (!trialActive) {
+      setFeedbackModalOpen(false);
+      return;
+    }
+
+    // Every 2 hours experience rating trigger
+    const checkFeedbackTimer = () => {
+      const lastPromptTime = localStorage.getItem(`brainexa_last_feedback_prompt_time_${userId}`);
+      if (!lastPromptTime) {
+        localStorage.setItem(`brainexa_last_feedback_prompt_time_${userId}`, Date.now().toString());
+        return;
+      }
+
+      const elapsed = Date.now() - Number(lastPromptTime);
+      const twoHoursInMs = 2 * 60 * 60 * 1000;
+
+      if (elapsed >= twoHoursInMs) {
+        setFeedbackModalOpen(true);
+      }
+    };
+
+    checkFeedbackTimer();
+    const interval = setInterval(checkFeedbackTimer, 10000);
+    return () => clearInterval(interval);
+  }, [user, location.pathname]);
+
+  const handleCloseLoginModal = () => {
+    if (user) {
+      sessionStorage.setItem(`brainexa_seen_login_choice_${user.id}`, "true");
+    }
+    setLoginModalOpen(false);
+  };
+
+  const handleCloseFeedbackModal = () => {
+    if (user) {
+      localStorage.setItem(`brainexa_last_feedback_prompt_time_${user.id}`, Date.now().toString());
+    }
+    setFeedbackModalOpen(false);
   };
 
   return (
@@ -166,6 +238,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       <main className="flex-1 p-4 pt-6 lg:p-8 lg:pt-8 overflow-auto">
         {children}
       </main>
+
+      <LoginChoiceModal isOpen={loginModalOpen} onClose={handleCloseLoginModal} />
+      <ExperienceFeedbackModal isOpen={feedbackModalOpen} onClose={handleCloseFeedbackModal} />
     </div>
   );
 }

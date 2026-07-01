@@ -25,6 +25,22 @@ export default function Subscription() {
   const [upiId, setUpiId] = useState("");
   const [showRulesOverlay, setShowRulesOverlay] = useState(false);
 
+  const createdTime = user?.createdAt ? new Date(user.createdAt).getTime() : 0;
+  const isTrialActive = user?.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+  const isTrialExpired = user?.plan === "free" && createdTime && (new Date().getTime() - createdTime >= 3 * 24 * 60 * 60 * 1000);
+
+  // Time remaining calculation
+  let timeRemainingText = "";
+  if (isTrialActive && createdTime) {
+    const msDiff = 3 * 24 * 60 * 60 * 1000 - (new Date().getTime() - createdTime);
+    const hoursDiff = Math.max(0, Math.floor(msDiff / (1000 * 60 * 60)));
+    if (hoursDiff > 24) {
+      timeRemainingText = `${Math.floor(hoursDiff / 24)} days left`;
+    } else {
+      timeRemainingText = `${hoursDiff} hours left`;
+    }
+  }
+
   const handleStandardPayment = async () => {
     initiateRazorpay();
   };
@@ -81,6 +97,39 @@ export default function Subscription() {
   return (
     <AppLayout>
       <div className="max-w-5xl mx-auto pb-20 px-4">
+        {/* Trial Alerts */}
+        {isTrialActive && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 rounded-2xl border border-primary/20 bg-primary/5 flex items-center gap-3 text-sm text-foreground"
+          >
+            <span className="text-xl">✨</span>
+            <div>
+              <p className="font-bold">Active 3-Day Trial</p>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                You currently have complete access to experience the Brainexa platform ({timeRemainingText} remaining). Subscribe below to keep your premium features forever!
+              </p>
+            </div>
+          </motion.div>
+        )}
+
+        {isTrialExpired && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }} 
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-8 p-4 rounded-2xl border border-red-500/20 bg-red-500/5 flex items-center gap-3 text-sm text-foreground"
+          >
+            <span className="text-xl">⚠️</span>
+            <div>
+              <p className="font-bold text-red-600 dark:text-red-400">Trial Expired</p>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                Your 3-day complete access trial has ended. To continue using Brainexa, please make a payment of ₹299/- for lifetime access.
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         <div className="text-center mb-12 mt-6">
           <h1 className="font-display text-3xl font-bold text-foreground mb-2">Elevate your learning</h1>
           <p className="text-muted-foreground">Premium features for students who aim for excellence</p>

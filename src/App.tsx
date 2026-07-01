@@ -45,7 +45,13 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function SubscribedRoute({ children }: { children: React.ReactNode }) {
   const { user } = useStore();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.plan === "free") return <Navigate to="/subscription" state={{ fromRestricted: true }} replace />;
+  
+  const createdTime = user.createdAt ? new Date(user.createdAt).getTime() : 0;
+  const isTrialActive = user.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+
+  if (user.plan === "free" && !isTrialActive) {
+    return <Navigate to="/subscription" state={{ fromRestricted: true }} replace />;
+  }
   return <>{children}</>;
 }
 

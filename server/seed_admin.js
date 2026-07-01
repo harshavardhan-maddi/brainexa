@@ -2,12 +2,15 @@ import pool from './db.js';
 import bcrypt from 'bcryptjs';
 
 async function seedAdmin() {
-  const email = 'admin@brainexa.com';
-  const password = 'Brainexa@admin';
+  const email = '25475A4603';
+  const password = '25475A4603';
   const name = 'System Administrator';
 
   try {
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update old admin email to new ID if it exists
+    await pool.query('UPDATE users SET email = $1 WHERE email = $2', [email, 'admin@brainexa.com']);
 
     // Check if exists
     const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);

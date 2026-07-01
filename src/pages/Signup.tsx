@@ -29,7 +29,9 @@ export default function Signup() {
   // Redirect if already authenticated
   useEffect(() => {
     if (user) {
-      navigate(user.plan === "free" ? "/subscription" : "/home");
+      const createdTime = user.createdAt ? new Date(user.createdAt).getTime() : 0;
+      const isTrial = user.plan === "free" && createdTime && (new Date().getTime() - createdTime < 3 * 24 * 60 * 60 * 1000);
+      navigate(user.plan === "free" && !isTrial ? "/subscription" : "/home");
     }
   }, [user, navigate]);
 
@@ -96,7 +98,7 @@ export default function Signup() {
           rulesAccepted: false,
         });
         toast.success("Account created successfully!");
-        navigate("/subscription");
+        navigate("/home");
         return;
       }
 
@@ -143,7 +145,7 @@ export default function Signup() {
         rulesAccepted: false,
       });
       toast.success("Account created successfully!");
-      navigate("/subscription");
+      navigate("/home");
     } catch (err: any) {
       setError(err.message || "Invalid or expired code.");
     } finally {

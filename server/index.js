@@ -2022,6 +2022,30 @@ app.post('/api/update-plan', async (req, res) => {
   }
 });
 
+app.post('/api/user/feedback', async (req, res) => {
+  const { userId, rating, comment } = req.body;
+  if (!userId || rating === undefined) {
+    return res.status(400).json({ success: false, error: 'User ID and rating are required.' });
+  }
+  try {
+    await pool.query(
+      'INSERT INTO feedback (user_id, rating, comment) VALUES ($1, $2, $3)',
+      [userId, rating, comment || null]
+    );
+
+    // Also log in activity_logs
+    await pool.query(
+      'INSERT INTO activity_logs (user_id, action, type, description) VALUES ($1, $2, $3, $4)',
+      [userId, 'feedback_submission', 'feedback', `Submitted rating of ${rating}/5 stars.`]
+    );
+
+    res.json({ success: true, message: 'Feedback submitted successfully.' });
+  } catch (error) {
+    console.error('Feedback Submission Error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/api/update-subjects', async (req, res) => {
   const { userId, subjects, isModified, paidAmount } = req.body;
   try {
@@ -2461,6 +2485,7 @@ app.get('/api/user-data/:userId', async (req, res) => {
         syllabusUpdateCount: user.syllabus_update_count || 0,
         syllabusUpdateAllowance: user.syllabus_update_allowance || 5,
         rulesAccepted: user.rules_accepted || false,
+        createdAt: user.created_at,
       },
       data: {
         subjects: subjectsWithTopics,
